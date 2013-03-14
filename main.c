@@ -16,17 +16,9 @@
 #include <string.h>
 #include <stdio.h>
 #include <pthread.h>
+
+#include "network.h"
 #include <gps.h>
-
-#define DRONE_IP "127.0.0.1"			// Static IP of drone. Set to localhost when testing.
-#define DRONE_COMMAND_PORT "5556"		// Port the drone receives AT commands from.
-#define DRONE_NAVDATA_PORT "5554"		// Port the drone sends navdata from.
-
-#define ANDROID_IP "127.0.0.1"			// Set to localhost for testing.
-#define ANDROID_COMMAND_PORT "5558"		// Port the android device sends commands from.
-#define ANDROID_GPS_UPDATE_PORT "5559"	// Port the android devices listens on for GPS updates.
-
-#define MAX_BUFFER_SIZE 1024
 
 typedef struct
 {
@@ -43,8 +35,6 @@ pthread_t					droneCommandThread;		// Thrad for sending commands to drone.
 pthread_t					androidGpsUpdateThread;	// Thread for sending periodic updates to android.
 pthread_t					androidCommandThread;	// Thread for getting Android directional commands.
 
-int createTcpClientConnection( const char *hostname, const char *port );	// port number as string
-int createUdpClientConnection( const char *hostname, const char *port, struct sockaddr_in *theiraddr );
 void *gpsPoll( void *arg );
 void *sendDroneCommands( void *arg );
 void *sendAndroidGpsUpdates( void *arg );
@@ -72,13 +62,13 @@ int main( int argc, char **argv )
 	pthread_attr_init( &attr );
 	pthread_attr_setdetachstate( &attr, PTHREAD_CREATE_JOINABLE );
 
-//	pthread_create( &gpsPollThread, &attr, gpsPoll, (void *)NULL );
+	pthread_create( &gpsPollThread, &attr, gpsPoll, (void *)NULL );
 	pthread_create( &droneCommandThread, &attr, sendDroneCommands, (void *)NULL );
 	pthread_create( &androidGpsUpdateThread, &attr, sendAndroidGpsUpdates, (void *)NULL );
 	pthread_create( &androidCommandThread, &attr, getAndroidCommands, (void *)NULL );
 
 	void *status;
-//	pthread_join( gpsPollThread, &status );
+	pthread_join( gpsPollThread, &status );
 	pthread_join( droneCommandThread, &status );
 	pthread_join( androidGpsUpdateThread, &status );
 	pthread_join( androidCommandThread, &status );
@@ -87,72 +77,6 @@ int main( int argc, char **argv )
 	pthread_attr_destroy( &attr );
 	pthread_exit( NULL );
 	return 0;
-}
-
-int createTcpClientConnection( const char *hostname, const char *port )
-{
-	int sockfd;
-	struct addrinfo hints;
-	struct addrinfo *servinfo;
-
-	memset( &hints, 0, sizeof( hints ) );
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-
-	if( getaddrinfo( hostname, port, &hints, &servinfo ) != 0 )
-	{
-		fprintf( stderr, "getaddrinfo() failure.\n" );
-		return -1;
-	}
-
-	// Connect to the first result possible.
-	struct addrinfo *p = NULL;
-	for( p = servinfo; p != NULL; p = p->ai_next )
-	{
-		sockfd = socket( p->ai_family, p->ai_socktype, p->ai_protocol );
-		if( sockfd == -1 )
-		{
-			continue;
-		}
-
-		if( connect( sockfd, p->ai_addr, p->ai_addrlen ) == -1 )
-		{
-			continue;
-		}
-
-		break;
-	}
-
-	if( p == NULL )
-	{
-		fprintf( stderr, "connect() failure.\n" );
-		return -1;
-	}
-
-	freeaddrinfo( servinfo );
-
-	return sockfd;
-}
-
-int createUdpClientConnection( const char *hostname, const char *port, struct sockaddr_in *theiraddr )
-{
-	int sockfd = socket( AF_INET, SOCK_DGRAM, IPPROTO_UDP );
-	if( sockfd == -1 )
-	{
-		fprintf( stderr, "socket() failure, errno = %d.\n", errno );
-		exit( EXIT_FAILURE );
-	}
-
-	memset( (char *)theiraddr, 0, sizeof( *theiraddr ) );
-	theiraddr->sin_family = AF_INET;
-	theiraddr->sin_port = htons( atoi( port ) );
-	if( inet_aton( hostname, &theiraddr->sin_addr ) == 0 )
-	{
-		fprintf( stderr, "inet_aton() failure, errno = %d.\n", errno );
-		exit( EXIT_FAILURE );
-	}
-
-	return sockfd;
 }
 
 void *gpsPoll( void *arg )
