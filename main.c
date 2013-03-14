@@ -18,6 +18,7 @@
 #include <pthread.h>
 
 #include "network.h"
+#include "command.h"
 #include <gps.h>
 
 typedef struct
@@ -116,9 +117,9 @@ void *gpsPoll( void *arg )
 
 void *sendDroneCommands( void *arg )
 {
-	struct sockaddr_in theiraddr;
-	int cmdSock = createUdpClientConnection( DRONE_IP, DRONE_COMMAND_PORT, &theiraddr );
-	if( cmdSock < 0 )
+	// Note that droneCmdSock and droneCmdAddr are extern globals from command.h.
+	droneCmdSock = createUdpClientConnection( DRONE_IP, DRONE_COMMAND_PORT, &droneCmdAddr );
+	if( droneCmdSock < 0 )
 	{
 		fprintf( stderr, "Couldn't connect to %s.\n", DRONE_IP );
 		exit( EXIT_FAILURE );
@@ -128,10 +129,9 @@ void *sendDroneCommands( void *arg )
 		printf( "Connected to %s.\n", DRONE_IP );
 	}
 
-	int i = 0;
+	unsigned int i = 0;
 	for(;;)
 	{
-		char str[MAX_BUFFER_SIZE];
 		double lat;
 		double lon;
 
@@ -140,14 +140,17 @@ void *sendDroneCommands( void *arg )
 			lon = gpsFix.longitude;
 		pthread_mutex_unlock( &gpsFixMutex );
 
-		sprintf( str, "%f %f %d", lat, lon, i++ );
-		if( sendto( cmdSock, str, sizeof( str ), 0, (struct sockaddr *)&theiraddr, sizeof( theiraddr ) ) < 0 )
+		printf( "%f %f\n", lat, lon );
+		if( i++ % 2 == 0 )
 		{
-			printf( "Error sending command to drone\n." );
-			exit( EXIT_FAILURE );
+			droneTakeOff();
+		}
+		else
+		{
+			droneLand();
 		}
 
-		sleep( 1 );
+		sleep( 10 );
 	}
 
 	pthread_exit( NULL );
