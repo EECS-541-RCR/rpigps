@@ -18,11 +18,11 @@
 #include <pthread.h>
 #include <gps.h>
 
-#define DRONE_IP "localhost"			// Static IP of drone. Set to localhost when testing.
+#define DRONE_IP "127.0.0.1"			// Static IP of drone. Set to localhost when testing.
 #define DRONE_COMMAND_PORT "5556"		// Port the drone receives AT commands from.
 #define DRONE_NAVDATA_PORT "5554"		// Port the drone sends navdata from.
 
-#define ANDROID_IP "localhost"			// Set to localhost for testing.
+#define ANDROID_IP "127.0.0.1"			// Set to localhost for testing.
 #define ANDROID_COMMAND_PORT "5558"		// Port the android device sends commands from.
 #define ANDROID_GPS_UPDATE_PORT "5559"	// Port the android devices listens on for GPS updates.
 
@@ -43,7 +43,8 @@ pthread_t					droneCommandThread;		// Thrad for sending commands to drone.
 pthread_t					androidGpsUpdateThread;	// Thread for sending periodic updates to android.
 pthread_t					androidCommandThread;	// Thread for getting Android directional commands.
 
-int createClientConnection( const char *hostname, const char *port );	// port number as string
+int createTcpClientConnection( const char *hostname, const char *port );	// port number as string
+int createUdpClientConnection( const char *hostname, const char *port, struct sockaddr_in *theiraddr );
 void *gpsPoll( void *arg );
 void *sendDroneCommands( void *arg );
 void *sendAndroidGpsUpdates( void *arg );
@@ -71,13 +72,13 @@ int main( int argc, char **argv )
 	pthread_attr_init( &attr );
 	pthread_attr_setdetachstate( &attr, PTHREAD_CREATE_JOINABLE );
 
-	pthread_create( &gpsPollThread, &attr, gpsPoll, (void *)NULL );
+//	pthread_create( &gpsPollThread, &attr, gpsPoll, (void *)NULL );
 	pthread_create( &droneCommandThread, &attr, sendDroneCommands, (void *)NULL );
 	pthread_create( &androidGpsUpdateThread, &attr, sendAndroidGpsUpdates, (void *)NULL );
 	pthread_create( &androidCommandThread, &attr, getAndroidCommands, (void *)NULL );
 
 	void *status;
-	pthread_join( gpsPollThread, &status );
+//	pthread_join( gpsPollThread, &status );
 	pthread_join( droneCommandThread, &status );
 	pthread_join( androidGpsUpdateThread, &status );
 	pthread_join( androidCommandThread, &status );
@@ -88,7 +89,7 @@ int main( int argc, char **argv )
 	return 0;
 }
 
-int createClientConnection( const char *hostname, const char *port )
+int createTcpClientConnection( const char *hostname, const char *port )
 {
 	int sockfd;
 	struct addrinfo hints;
@@ -133,6 +134,27 @@ int createClientConnection( const char *hostname, const char *port )
 	return sockfd;
 }
 
+int createUdpClientConnection( const char *hostname, const char *port, struct sockaddr_in *theiraddr )
+{
+	int sockfd = socket( AF_INET, SOCK_DGRAM, IPPROTO_UDP );
+	if( sockfd == -1 )
+	{
+		fprintf( stderr, "socket() failure, errno = %d.\n", errno );
+		exit( EXIT_FAILURE );
+	}
+
+	memset( (char *)theiraddr, 0, sizeof( *theiraddr ) );
+	theiraddr->sin_family = AF_INET;
+	theiraddr->sin_port = htons( atoi( port ) );
+	if( inet_aton( hostname, &theiraddr->sin_addr ) == 0 )
+	{
+		fprintf( stderr, "inet_aton() failure, errno = %d.\n", errno );
+		exit( EXIT_FAILURE );
+	}
+
+	return sockfd;
+}
+
 void *gpsPoll( void *arg )
 {
 	for(;;)
@@ -170,7 +192,8 @@ void *gpsPoll( void *arg )
 
 void *sendDroneCommands( void *arg )
 {
-	int cmdSock = createClientConnection( DRONE_IP, DRONE_COMMAND_PORT );
+	struct sockaddr_in theiraddr;
+	int cmdSock = createUdpClientConnection( DRONE_IP, DRONE_COMMAND_PORT, &theiraddr );
 	if( cmdSock < 0 )
 	{
 		fprintf( stderr, "Couldn't connect to %s.\n", DRONE_IP );
@@ -194,7 +217,7 @@ void *sendDroneCommands( void *arg )
 		pthread_mutex_unlock( &gpsFixMutex );
 
 		sprintf( str, "%f %f %d", lat, lon, i++ );
-		if( send( cmdSock, str, sizeof( str ), 0 ) < 0 )
+		if( sendto( cmdSock, str, sizeof( str ), 0, (struct sockaddr *)&theiraddr, sizeof( theiraddr ) ) < 0 )
 		{
 			printf( "Error sending command to drone\n." );
 			exit( EXIT_FAILURE );
@@ -208,7 +231,7 @@ void *sendDroneCommands( void *arg )
 
 void *sendAndroidGpsUpdates( void *arg )
 {
-	int updateSock = createClientConnection( ANDROID_IP, ANDROID_GPS_UPDATE_PORT );
+	int updateSock = createTcpClientConnection( ANDROID_IP, ANDROID_GPS_UPDATE_PORT );
 	if( updateSock < 0 )
 	{
 		fprintf( stderr, "Couldn't connect to %s.\n", DRONE_IP );
