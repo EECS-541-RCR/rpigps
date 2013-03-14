@@ -16,16 +16,45 @@
 
 #define MAX_BUFFER_SIZE 1024
 
+void printUsage();
+void runTcpServer( const char *port );
+void runUdpServer( const char *port );
+
 int main( int argc, char **argv )
 {
-	if( argc != 2 )
+	if( argc != 3 )
 	{
-		printf( "Usage: %s <port number>\n", argv[0] );
-		printf( "Creates a dummy server for testing that listens on the given port\n" );
-		printf( "for incoming connections, and prints any data it receives to STDOUT.\n" );
+		printUsage();
 		exit( EXIT_FAILURE );
 	}
 
+	if( strcmp( argv[1], "tcp" ) == 0 )
+	{
+		runTcpServer( argv[2] );
+	}
+	else if( strcmp( argv[1], "udp" ) == 0 )
+	{
+		runUdpServer( argv[2] );
+	}
+	else
+	{
+		printUsage();
+		exit( EXIT_FAILURE );
+	}
+
+	return 0;
+}
+
+void printUsage()
+{
+	printf( "Usage: ./dummyserver <protocol> <port number>\n" );
+	printf( "<protocol> = tcp or udp.\n" );
+	printf( "Creates a dummy server for testing that listens on the given port\n" );
+	printf( "for incoming connections, and prints any data it receives to STDOUT.\n" );
+}
+
+void runTcpServer( const char *port )
+{
 	int handshake_socket;
 	struct sockaddr_in myaddr;
 
@@ -45,7 +74,7 @@ int main( int argc, char **argv )
 	}
 
 	myaddr.sin_family = AF_INET; 				/* Host byte order */
-	myaddr.sin_port = htons( atoi( argv[1] ) );			/* Network byte order */
+	myaddr.sin_port = htons( atoi( port ) );			/* Network byte order */
 	myaddr.sin_addr.s_addr = htonl( INADDR_ANY ); 		/* Get my IP address */
 	memset( &( myaddr.sin_zero ), '\0', 8 ); 			/* Zero it out */
 
@@ -105,7 +134,7 @@ int main( int argc, char **argv )
 				else
 				{
 					buffer[size] = '\0';
-					printf( "%s\n", buffer );
+					printf( "Recv %s\n", buffer );
 				}
 			}
 
@@ -116,7 +145,50 @@ int main( int argc, char **argv )
 		close( connection_socket );	// Parent should get ready for next transmission.
 		sleep( 10 );
 	}
+}
 
-	return 0;
+void runUdpServer( const char *port )
+{
+	struct sockaddr_in myaddr;
+	struct sockaddr_in theiraddr;
+
+	int sockfd = socket( AF_INET, SOCK_DGRAM, IPPROTO_UDP );
+	if( sockfd == -1 )
+	{
+		fprintf( stderr, "socket() failure, errno = %d.\n", errno );
+		exit( EXIT_FAILURE );
+	}
+
+	memset( (char *)&myaddr, 0, sizeof( myaddr ) );
+	myaddr.sin_family = AF_INET;
+	myaddr.sin_port = htons( atoi( port ) );
+	myaddr.sin_addr.s_addr = htonl( INADDR_ANY );
+
+	if( bind( sockfd, (struct sockaddr *)&myaddr, sizeof( myaddr ) ) == -1 )
+	{
+		fprintf( stderr, "bind() failure, errno = %d.\n", errno );
+		exit( EXIT_FAILURE );
+	}
+
+	while( 1 )
+	{
+		char buffer[MAX_BUFFER_SIZE];
+		socklen_t theiraddrsize = sizeof( theiraddr );
+
+		int size = recvfrom( sockfd, buffer, MAX_BUFFER_SIZE, 0, (struct sockaddr *)&theiraddr, &theiraddrsize );
+		if( size == -1 )
+		{
+			fprintf( stderr, "recvfrom() failure, errno = %d.\n", errno );
+			close( sockfd );
+			exit( EXIT_FAILURE );
+		}
+		else
+		{
+			buffer[size] = '\0';
+			printf( "Recv %s\n", buffer );
+		}
+	}
+
+	close( sockfd );
 }
 
