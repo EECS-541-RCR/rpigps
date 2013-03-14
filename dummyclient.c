@@ -16,7 +16,6 @@
 #include <string.h>
 #include <stdio.h>
 #include <pthread.h>
-#include <gps.h>
 
 #define MAX_BUFFER_SIZE 1024
 
