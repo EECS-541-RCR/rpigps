@@ -18,7 +18,7 @@
 #include <pthread.h>
 #include <gps.h>
 
-#define DRONE_IP "192.168.1.1"			// Static IP of drone.
+#define DRONE_IP "localhost"			// Static IP of drone. Set to localhost when testing.
 #define DRONE_COMMAND_PORT "5556"		// Port the drone receives AT commands from.
 #define DRONE_NAVDATA_PORT "5554"		// Port the drone sends navdata from.
 #define ANDROID_COMAND_PORT "5558"		// Port the android device sends commands from.
@@ -26,11 +26,11 @@
 
 #define MAX_BUFFER_SIZE 1024
 
-struct GpsFix
+typedef struct
 {
 	double latitude;
 	double longitude;
-};
+} GpsFix;
 
 static struct gps_data_t	gpsData;		// For getting data from gpsd.
 GpsFix						gpsFix;			// For all other processing, taken from gpsData struct when fix obtained.
@@ -61,7 +61,7 @@ int main( int argc, char **argv )
 	}
 	else
 	{
-		printf( "Connected to %s\n.", DRONE_IP );
+		printf( "Connected to %s.\n", DRONE_IP );
 	}
 
 	// Connect to gpsd.
