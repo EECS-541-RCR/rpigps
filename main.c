@@ -21,7 +21,9 @@
 #define DRONE_IP "localhost"			// Static IP of drone. Set to localhost when testing.
 #define DRONE_COMMAND_PORT "5556"		// Port the drone receives AT commands from.
 #define DRONE_NAVDATA_PORT "5554"		// Port the drone sends navdata from.
-#define ANDROID_COMAND_PORT "5558"		// Port the android device sends commands from.
+
+#define ANDROID_IP "localhost"			// Set to localhost for testing.
+#define ANDROID_COMMAND_PORT "5558"		// Port the android device sends commands from.
 #define ANDROID_GPS_UPDATE_PORT "5559"	// Port the android devices listens on for GPS updates.
 
 #define MAX_BUFFER_SIZE 1024
@@ -37,33 +39,18 @@ GpsFix						gpsFix;			// For all other processing, taken from gpsData struct whe
 pthread_mutex_t				gpsFixMutex;	// Mutex for accessing gpsFix struct.
 
 pthread_t					gpsPollThread;	// Thread for getting GPS data from gpsd.
+pthread_t					droneCommandThread;		// Thrad for sending commands to drone.
 pthread_t					androidGpsUpdateThread;	// Thread for sending periodic updates to android.
 pthread_t					androidCommandThread;	// Thread for getting Android directional commands.
 
-int cmdSock;				// Socket used to send commands to drone.
-int androidHandshakeSock;	// Socket used to initialize connections with Android device.
-int androidGpsUpdateSock;	// Socket used to send periodic GPS updates to Android device.
-
 int createClientConnection( const char *hostname, const char *port );	// port number as string
 void *gpsPoll( void *arg );
+void *sendDroneCommands( void *arg );
 void *sendAndroidGpsUpdates( void *arg );
 void *getAndroidCommands( void *arg );
 
 int main( int argc, char **argv )
 {
-	// Connect to AR drone.
-	printf( "Trying to connect to AR drone...\n" );
-	int cmdSock = createClientConnection( DRONE_IP, DRONE_COMMAND_PORT );
-	if( cmdSock < 0 )
-	{
-		fprintf( stderr, "Couldn't connect to %s.\n", DRONE_IP );
-		exit( EXIT_FAILURE );
-	}
-	else
-	{
-		printf( "Connected to %s.\n", DRONE_IP );
-	}
-
 	// Connect to gpsd.
 	if( gps_open( "localhost", DEFAULT_GPSD_PORT, &gpsData ) != 0 )
 	{
@@ -85,14 +72,19 @@ int main( int argc, char **argv )
 	pthread_attr_setdetachstate( &attr, PTHREAD_CREATE_JOINABLE );
 
 	pthread_create( &gpsPollThread, &attr, gpsPoll, (void *)NULL );
+	pthread_create( &droneCommandThread, &attr, sendDroneCommands, (void *)NULL );
+	pthread_create( &androidGpsUpdateThread, &attr, sendAndroidGpsUpdates, (void *)NULL );
+	pthread_create( &androidCommandThread, &attr, getAndroidCommands, (void *)NULL );
 
 	void *status;
 	pthread_join( gpsPollThread, &status );
+	pthread_join( droneCommandThread, &status );
+	pthread_join( androidGpsUpdateThread, &status );
+	pthread_join( androidCommandThread, &status );
 
 	pthread_mutex_destroy( &gpsFixMutex );
 	pthread_attr_destroy( &attr );
 	pthread_exit( NULL );
-	close( cmdSock );
 	return 0;
 }
 
@@ -164,8 +156,6 @@ void *gpsPoll( void *arg )
 				}
 				else
 				{
-					printf( "Latitude: %f\n", gpsData.fix.latitude );
-					printf( "Longitude: %f\n", gpsData.fix.longitude );
 					pthread_mutex_lock( &gpsFixMutex );
 						gpsFix.latitude = gpsData.fix.latitude;
 						gpsFix.longitude = gpsData.fix.longitude;
@@ -177,3 +167,169 @@ void *gpsPoll( void *arg )
 
 	pthread_exit( NULL );
 }
+
+void *sendDroneCommands( void *arg )
+{
+	int cmdSock = createClientConnection( DRONE_IP, DRONE_COMMAND_PORT );
+	if( cmdSock < 0 )
+	{
+		fprintf( stderr, "Couldn't connect to %s.\n", DRONE_IP );
+		exit( EXIT_FAILURE );
+	}
+	else
+	{
+		printf( "Connected to %s.\n", DRONE_IP );
+	}
+
+	int i = 0;
+	for(;;)
+	{
+		char str[MAX_BUFFER_SIZE];
+		double lat;
+		double lon;
+
+		pthread_mutex_lock( &gpsFixMutex );
+			lat = gpsFix.latitude;
+			lon = gpsFix.longitude;
+		pthread_mutex_unlock( &gpsFixMutex );
+
+		sprintf( str, "%f %f %d", lat, lon, i++ );
+		if( send( cmdSock, str, sizeof( str ), 0 ) < 0 )
+		{
+			printf( "Error sending command to drone\n." );
+			exit( EXIT_FAILURE );
+		}
+
+		sleep( 1 );
+	}
+
+	pthread_exit( NULL );
+}
+
+void *sendAndroidGpsUpdates( void *arg )
+{
+	int updateSock = createClientConnection( ANDROID_IP, ANDROID_GPS_UPDATE_PORT );
+	if( updateSock < 0 )
+	{
+		fprintf( stderr, "Couldn't connect to %s.\n", DRONE_IP );
+		exit( EXIT_FAILURE );
+	}
+	else
+	{
+		printf( "Connected to %s.\n", DRONE_IP );
+	}
+
+	int i = 0;
+	for(;;)
+	{
+		char str[MAX_BUFFER_SIZE];
+		double lat;
+		double lon;
+
+		pthread_mutex_lock( &gpsFixMutex );
+			lat = gpsFix.latitude;
+			lon = gpsFix.longitude;
+		pthread_mutex_unlock( &gpsFixMutex );
+
+		sprintf( str, "%f %f %d", lat, lon, i++ );
+		if( send( updateSock, str, sizeof( str ), 0 ) < 0 )
+		{
+			printf( "Error sending command to drone\n." );
+			exit( EXIT_FAILURE );
+		}
+
+		sleep( 1 );
+	}
+
+	pthread_exit( NULL );
+}
+
+void *getAndroidCommands( void *arg )
+{
+	int handshakeSocket;
+	struct sockaddr_in myaddr;
+
+	handshakeSocket = socket( PF_INET, SOCK_STREAM, 0 );
+	if( handshakeSocket == -1 )
+	{
+		printf( "socket() failure, errno = %d\n", errno );
+		exit( EXIT_FAILURE );
+	}
+
+	int yes = 1;
+	if( setsockopt( handshakeSocket, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof( int ) ) == -1 )
+	{
+		printf( "setsockopt() failure, errno = %d\n", errno );
+		close( handshakeSocket );
+		exit( EXIT_FAILURE );
+	}
+
+	myaddr.sin_family = AF_INET;
+	myaddr.sin_port = htons( atoi( ANDROID_COMMAND_PORT ) );
+	myaddr.sin_addr.s_addr = htonl( INADDR_ANY );
+	memset( &( myaddr.sin_zero ), '\0', 8 );
+
+	if( bind( handshakeSocket, (struct sockaddr *)&myaddr, sizeof( struct sockaddr ) ) == -1 )
+	{
+		printf( "bind() failure, errno = %d\n", errno );
+		close( handshakeSocket );
+		exit( EXIT_FAILURE );
+	}
+
+	if( listen( handshakeSocket, 10 ) == -1 )
+	{
+		printf( "listen() failure, errno = %d\n", errno );
+		close( handshakeSocket );
+		exit( EXIT_FAILURE );
+	}
+
+	while( 1 )
+	{
+		struct sockaddr_in theiraddr;
+		socklen_t theiraddr_size = sizeof( struct sockaddr_in );
+
+		/* Accept the incoming connection request. */
+		int connectionSocket = accept( handshakeSocket, (struct sockaddr *)&theiraddr, &theiraddr_size );
+		if( connectionSocket == -1 )
+		{
+			printf( "accept() failure, errno = %d\n", errno );
+			continue;
+		}
+
+		if( !fork() )
+		{
+			char buffer[MAX_BUFFER_SIZE];
+			close( handshakeSocket );	// Child doesn't need this socket.
+
+			while( 1 )
+			{
+				int size = recv( connectionSocket, buffer, MAX_BUFFER_SIZE, 0 );
+				if( size == -1 )
+				{
+					printf( "recv() failure, errno = %d\n", errno );
+					close( connectionSocket );
+					exit( EXIT_FAILURE );
+				}
+				else if( size == 0 )
+				{
+					// Client disconnected.
+					break;
+				}
+				else
+				{
+					buffer[size] = '\0';
+					printf( "Receive %s\n", buffer );
+				}
+			}
+
+			close( connectionSocket );
+			exit( EXIT_SUCCESS );
+		}
+
+		close( connectionSocket );	// Parent should get ready for next transmission.
+		sleep( 10 );
+	}
+
+	return 0;
+}
+
