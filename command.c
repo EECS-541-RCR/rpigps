@@ -36,14 +36,14 @@ void droneTakeOff()
 {
 	char cmd[MAX_COMMAND_LEN];
 	
-	snprintf( cmd, MAX_COMMAND_LEN, "AT*REF=%u,290718208", droneSeqNum++ );
+	snprintf( cmd, MAX_COMMAND_LEN, "AT*REF=%u,290718208\r", droneSeqNum++ );
 	sendCommand( cmd );
 }
 void droneLand()
 {
 	char cmd[MAX_COMMAND_LEN];
 
-	snprintf( cmd, MAX_COMMAND_LEN, "AT*REF=%u,290717696", droneSeqNum++ );
+	snprintf( cmd, MAX_COMMAND_LEN, "AT*REF=%u,290717696\r", droneSeqNum++ );
 	sendCommand( cmd );
 }
 
@@ -51,7 +51,7 @@ void droneHover()
 {
 	char cmd[MAX_COMMAND_LEN];
 
-	snprintf( cmd, MAX_COMMAND_LEN, "AT*PCMD=%u,1,0,0,0,0", droneSeqNum++ );
+	snprintf( cmd, MAX_COMMAND_LEN, "AT*PCMD=%u,1,0,0,0,0\r", droneSeqNum++ );
 	sendCommand( cmd );
 }
 
@@ -59,7 +59,7 @@ void droneUp()
 {
 	char cmd[MAX_COMMAND_LEN];
 
-	snprintf( cmd, MAX_COMMAND_LEN, "AT*PCMD=%u,1,0,0,1045220557,0", droneSeqNum++ );
+	snprintf( cmd, MAX_COMMAND_LEN, "AT*PCMD=%u,1,0,0,1045220557,0\r", droneSeqNum++ );
 	sendCommand( cmd );
 }
 
@@ -67,7 +67,7 @@ void droneDown()
 {
 	char cmd[MAX_COMMAND_LEN];
 
-	snprintf( cmd, MAX_COMMAND_LEN, "AT*PCMD=%u,1,0,0,-1102263091,0", droneSeqNum++ );
+	snprintf( cmd, MAX_COMMAND_LEN, "AT*PCMD=%u,1,0,0,-1102263091,0\r", droneSeqNum++ );
 	sendCommand( cmd );
 }
 
@@ -75,7 +75,7 @@ void droneForward()
 {
 	char cmd[MAX_COMMAND_LEN];
 
-	snprintf( cmd, MAX_COMMAND_LEN, "AT*PCMD=%u,1,0,-1102263091,0,0", droneSeqNum++ );
+	snprintf( cmd, MAX_COMMAND_LEN, "AT*PCMD=%u,1,0,-1102263091,0,0\r", droneSeqNum++ );
 	sendCommand( cmd );
 }
 
@@ -83,7 +83,7 @@ void droneBack()
 {
 	char cmd[MAX_COMMAND_LEN];
 
-	snprintf( cmd, MAX_COMMAND_LEN, "AT*PCMD=%u,1,0,1045220557,0,0", droneSeqNum++ );
+	snprintf( cmd, MAX_COMMAND_LEN, "AT*PCMD=%u,1,0,1045220557,0,0\r", droneSeqNum++ );
 	sendCommand( cmd );
 }
 
@@ -91,7 +91,7 @@ void droneLeft()
 {
 	char cmd[MAX_COMMAND_LEN];
 
-	snprintf( cmd, MAX_COMMAND_LEN, "AT*PCMD=%u,1,-1102263091,0,0,0", droneSeqNum++ );
+	snprintf( cmd, MAX_COMMAND_LEN, "AT*PCMD=%u,1,-1102263091,0,0,0\r", droneSeqNum++ );
 	sendCommand( cmd );
 }
 
@@ -99,7 +99,7 @@ void droneRight()
 {
 	char cmd[MAX_COMMAND_LEN];
 
-	snprintf( cmd, MAX_COMMAND_LEN, "AT*PCMD=%u,1,1045220557,0,0,0", droneSeqNum++ );
+	snprintf( cmd, MAX_COMMAND_LEN, "AT*PCMD=%u,1,1045220557,0,0,0\r", droneSeqNum++ );
 	sendCommand( cmd );
 }
 
@@ -107,7 +107,7 @@ void droneRotateLeft()
 {
 	char cmd[MAX_COMMAND_LEN];
 
-	snprintf( cmd, MAX_COMMAND_LEN, "AT*PCMD=%u,1,0,0,0,-1085485875", droneSeqNum++ );
+	snprintf( cmd, MAX_COMMAND_LEN, "AT*PCMD=%u,1,0,0,0,-1085485875\r", droneSeqNum++ );
 	sendCommand( cmd );
 }
 
@@ -115,7 +115,7 @@ void droneRotateRight()
 {
 	char cmd[MAX_COMMAND_LEN];
 
-	snprintf( cmd, MAX_COMMAND_LEN, "AT*PCMD=%u,1,0,0,0,161997773", droneSeqNum++ );
+	snprintf( cmd, MAX_COMMAND_LEN, "AT*PCMD=%u,1,0,0,0,161997773\r", droneSeqNum++ );
 	sendCommand( cmd );
 }
 
