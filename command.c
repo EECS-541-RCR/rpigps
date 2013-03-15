@@ -25,7 +25,8 @@ struct sockaddr_in droneCmdAddr;
 
 void sendCommand( const char *cmd )
 {
-	if( sendto( droneCmdSock, cmd, strlen( cmd ), 0, (struct sockaddr *)&droneCmdAddr, sizeof( droneCmdAddr ) ) < 0 )
+	printf( "Send command %s\n", cmd );
+	if( sendto( droneCmdSock, cmd, MAX_COMMAND_LEN, 0, (struct sockaddr *)&droneCmdAddr, sizeof( droneCmdAddr ) ) < 0 )
 	{
 		fprintf( stderr, "Error sending command to drone.\n" );
 		exit( EXIT_FAILURE );
@@ -115,7 +116,7 @@ void droneRotateRight()
 {
 	char cmd[MAX_COMMAND_LEN];
 
-	snprintf( cmd, MAX_COMMAND_LEN, "AT*PCMD=%u,1,0,0,0,161997773\r", droneSeqNum++ );
+	snprintf( cmd, MAX_COMMAND_LEN, "AT*PCMD=%u,1,0,0,0,1061997773\r", droneSeqNum++ );
 	sendCommand( cmd );
 }
 
