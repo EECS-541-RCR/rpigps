@@ -121,12 +121,12 @@ void *sendDroneCommands( void *arg )
 	droneCmdSock = createUdpClientConnection( DRONE_IP, DRONE_COMMAND_PORT, &droneCmdAddr );
 	if( droneCmdSock < 0 )
 	{
-		fprintf( stderr, "Couldn't connect to %s.\n", DRONE_IP );
+		fprintf( stderr, "Command thread couldn't connect to %s.\n", DRONE_IP );
 		exit( EXIT_FAILURE );
 	}
 	else
 	{
-		printf( "Connected to %s.\n", DRONE_IP );
+		printf( "Command thread connected to %s.\n", DRONE_IP );
 	}
 
 	unsigned int i = 0;
@@ -161,12 +161,12 @@ void *sendAndroidGpsUpdates( void *arg )
 	int updateSock = createTcpClientConnection( ANDROID_IP, ANDROID_GPS_UPDATE_PORT );
 	if( updateSock < 0 )
 	{
-		fprintf( stderr, "Couldn't connect to %s.\n", DRONE_IP );
+		fprintf( stderr, "Android GPS update thread couldn't connect to %s.\n", ANDROID_IP );
 		exit( EXIT_FAILURE );
 	}
 	else
 	{
-		printf( "Connected to %s.\n", DRONE_IP );
+		printf( "Android GPS update thread connected to %s.\n", ANDROID_IP );
 	}
 
 	int i = 0;
@@ -184,7 +184,7 @@ void *sendAndroidGpsUpdates( void *arg )
 		sprintf( str, "%f %f %d", lat, lon, i++ );
 		if( send( updateSock, str, sizeof( str ), 0 ) < 0 )
 		{
-			printf( "Error sending command to drone\n." );
+			printf( "Error sending GPS update to Android device.\n" );
 			exit( EXIT_FAILURE );
 		}
 
@@ -202,14 +202,14 @@ void *getAndroidCommands( void *arg )
 	handshakeSocket = socket( PF_INET, SOCK_STREAM, 0 );
 	if( handshakeSocket == -1 )
 	{
-		printf( "socket() failure, errno = %d\n", errno );
+		printf( "Android command thread: socket() failure, errno = %d\n", errno );
 		exit( EXIT_FAILURE );
 	}
 
 	int yes = 1;
 	if( setsockopt( handshakeSocket, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof( int ) ) == -1 )
 	{
-		printf( "setsockopt() failure, errno = %d\n", errno );
+		printf( "Android command thread: setsockopt() failure, errno = %d\n", errno );
 		close( handshakeSocket );
 		exit( EXIT_FAILURE );
 	}
@@ -221,14 +221,14 @@ void *getAndroidCommands( void *arg )
 
 	if( bind( handshakeSocket, (struct sockaddr *)&myaddr, sizeof( struct sockaddr ) ) == -1 )
 	{
-		printf( "bind() failure, errno = %d\n", errno );
+		printf( "Android command thread: bind() failure, errno = %d\n", errno );
 		close( handshakeSocket );
 		exit( EXIT_FAILURE );
 	}
 
 	if( listen( handshakeSocket, 10 ) == -1 )
 	{
-		printf( "listen() failure, errno = %d\n", errno );
+		printf( "Android command thread: listen() failure, errno = %d\n", errno );
 		close( handshakeSocket );
 		exit( EXIT_FAILURE );
 	}
@@ -242,7 +242,7 @@ void *getAndroidCommands( void *arg )
 		int connectionSocket = accept( handshakeSocket, (struct sockaddr *)&theiraddr, &theiraddr_size );
 		if( connectionSocket == -1 )
 		{
-			printf( "accept() failure, errno = %d\n", errno );
+			printf( "Android command thread: accept() failure, errno = %d\n", errno );
 			continue;
 		}
 

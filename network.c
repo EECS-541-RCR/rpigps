@@ -70,7 +70,7 @@ int createUdpClientConnection( const char *hostname, const char *port, struct so
 	if( sockfd == -1 )
 	{
 		fprintf( stderr, "socket() failure, errno = %d.\n", errno );
-		exit( EXIT_FAILURE );
+		return -1;
 	}
 
 	memset( (char *)theiraddr, 0, sizeof( *theiraddr ) );
@@ -79,7 +79,7 @@ int createUdpClientConnection( const char *hostname, const char *port, struct so
 	if( inet_aton( hostname, &theiraddr->sin_addr ) == 0 )
 	{
 		fprintf( stderr, "inet_aton() failure, errno = %d.\n", errno );
-		exit( EXIT_FAILURE );
+		return -1;
 	}
 
 	return sockfd;
