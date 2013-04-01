@@ -25,7 +25,6 @@ struct sockaddr_in droneCmdAddr;
 
 void sendCommand( const char *cmd )
 {
-	printf( "Send command %s\n", cmd );
 	if( sendto( droneCmdSock, cmd, MAX_COMMAND_LEN, 0, (struct sockaddr *)&droneCmdAddr, sizeof( droneCmdAddr ) ) < 0 )
 	{
 		fprintf( stderr, "Error sending command to drone.\n" );
