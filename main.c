@@ -2,6 +2,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <netinet/in.h>
 #include <netdb.h>
 #include <math.h>
@@ -16,23 +17,20 @@
 #include <string.h>
 #include <stdio.h>
 #include <pthread.h>
+#include <fcntl.h>
+#include <termios.h>
+
+#define MAX_NMEA_SENTENCE_LEN 1024
 
 #include "network.h"
 #include "command.h"
-#include <gps.h>
+#include "gpsutil.h"
 
-typedef struct
-{
-	double latitude;
-	double longitude;
-} GpsFix;
-
-static struct gps_data_t	gpsData;		// For getting data from gpsd.
-GpsFix						gpsFix;			// For all other processing, taken from gpsData struct when fix obtained.
+GpsPoint					gpsFix;			// For all other processing. Parsed from GPS device NMEA strings.
 pthread_mutex_t				gpsFixMutex;	// Mutex for accessing gpsFix struct.
 
-pthread_t					gpsPollThread;	// Thread for getting GPS data from gpsd.
-pthread_t					droneCommandThread;		// Thrad for sending commands to drone.
+pthread_t					gpsPollThread;			// Thread for getting GPS data from device.
+pthread_t					droneCommandThread;		// Thread for sending commands to drone.
 pthread_t					androidGpsUpdateThread;	// Thread for sending periodic updates to android.
 pthread_t					androidCommandThread;	// Thread for getting Android directional commands.
 
@@ -43,25 +41,11 @@ void *getAndroidCommands( void *arg );
 
 int main( int argc, char **argv )
 {
-	// Connect to gpsd.
-	if( gps_open( "localhost", DEFAULT_GPSD_PORT, &gpsData ) != 0 )
-	{
-		fprintf( stderr, "Couldn't connect to gpsd, errno = %d, %s.\n", errno, gps_errstr( errno ) );
-		exit( EXIT_FAILURE );
-	}
-	else
-	{
-		printf( "Connected to gpsd.\n" );
-	}
-
-	// Register for updates from gpsd.
-	gps_stream( &gpsData, WATCH_ENABLE | WATCH_JSON, NULL );
-
-	pthread_attr_t	attr;
-
-	pthread_mutex_init( &gpsFixMutex, NULL );
+	pthread_attr_t attr;
 	pthread_attr_init( &attr );
 	pthread_attr_setdetachstate( &attr, PTHREAD_CREATE_JOINABLE );
+
+	pthread_mutex_init( &gpsFixMutex, NULL );
 
 	pthread_create( &gpsPollThread, &attr, gpsPoll, (void *)NULL );
 	pthread_create( &droneCommandThread, &attr, sendDroneCommands, (void *)NULL );
@@ -82,36 +66,39 @@ int main( int argc, char **argv )
 
 void *gpsPoll( void *arg )
 {
-	for(;;)
+	struct sockaddr_un saun;
+
+	saun.sun_family = AF_UNIX;
+	strcpy( saun.sun_path, "serial_rpigps_data" );
+
+	int sockfd = socket( AF_UNIX, SOCK_STREAM, 0 );
+	if( sockfd < 0 )
 	{
-		if( !gps_waiting( &gpsData, 5000000 ) )
-		{
-			fprintf( stderr, "GPS fix timed out.\n" );
-			exit( EXIT_FAILURE );
-		}
-		else
-		{
-			if( gps_read( &gpsData ) == -1 )
-			{
-				fprintf( stderr, "gps_read() error, errno = %d\n", errno );
-			}
-			else
-			{
-				if( isnan( gpsData.fix.latitude ) || isnan( gpsData.fix.longitude ) )
-				{
-					fprintf( stderr, "Bad GPS fix.\n" );
-				}
-				else
-				{
-					pthread_mutex_lock( &gpsFixMutex );
-						gpsFix.latitude = gpsData.fix.latitude;
-						gpsFix.longitude = gpsData.fix.longitude;
-					pthread_mutex_unlock( &gpsFixMutex );
-				}
-			}
-		}
+		fprintf( stderr, "gpsPoll() socket creation failure, errno = %d.\n", errno );
+		exit( EXIT_FAILURE );
 	}
 
+	if( connect( sockfd, (struct sockaddr *)&saun, sizeof( saun ) ) < 0 )
+	{
+		fprintf( stderr, "gpsPoll() couldn't connect to usbgps, errno = %d.\n", errno );
+		exit( EXIT_FAILURE );
+	}
+
+	for(;;)
+	{
+		char *buffer[MAX_BUFFER_SIZE];
+		if( read( sockfd, buffer, MAX_BUFFER_SIZE ) < 0 )
+		{
+			fprintf( stderr, "Reading GPS data from usbgps failed, errno = %d.\n", errno );
+			close( sockfd );
+			exit( EXIT_FAILURE );
+		}
+
+		pthread_mutex_lock( &gpsFixMutex );
+		memcpy( (char *)&gpsFix, buffer, sizeof( GpsPoint ) / sizeof( char ) );
+		pthread_mutex_unlock( &gpsFixMutex );
+	}
+	
 	pthread_exit( NULL );
 }
 
@@ -135,12 +122,9 @@ void *sendDroneCommands( void *arg )
 		double lat;
 		double lon;
 
-		pthread_mutex_lock( &gpsFixMutex );
-			lat = gpsFix.latitude;
-			lon = gpsFix.longitude;
-		pthread_mutex_unlock( &gpsFixMutex );
+		lat = gpsFix.latitude;
+		lon = gpsFix.longitude;
 
-		printf( "%f %f\n", lat, lon );
 		if( i++ % 2 == 0 )
 		{
 			droneTakeOff();
@@ -176,10 +160,8 @@ void *sendAndroidGpsUpdates( void *arg )
 		double lat;
 		double lon;
 
-		pthread_mutex_lock( &gpsFixMutex );
-			lat = gpsFix.latitude;
-			lon = gpsFix.longitude;
-		pthread_mutex_unlock( &gpsFixMutex );
+		lat = gpsFix.latitude;
+		lon = gpsFix.longitude;
 
 		sprintf( str, "%f %f %d", lat, lon, i++ );
 		if( send( updateSock, str, sizeof( str ), 0 ) < 0 )
