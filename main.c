@@ -26,13 +26,14 @@
 #include "command.h"
 #include "gpsutil.h"
 
-GpsPoint					gpsFix;			// For all other processing. Parsed from GPS device NMEA strings.
-pthread_mutex_t				gpsFixMutex;	// Mutex for accessing gpsFix struct.
+GpsPoint			currGpsFix;		// Current GPS fix. Parsed from GPS device NMEA strings.
+GpsPoint			prevGpsFix;		// Previous GPS fix, used for heading estimation.
+pthread_mutex_t		gpsFixMutex;	// Mutex for accessing curr/prev GpsFix structs.
 
-pthread_t					gpsPollThread;			// Thread for getting GPS data from device.
-pthread_t					droneCommandThread;		// Thread for sending commands to drone.
-pthread_t					androidGpsUpdateThread;	// Thread for sending periodic updates to android.
-pthread_t					androidCommandThread;	// Thread for getting Android directional commands.
+pthread_t			gpsPollThread;			// Thread for getting GPS data from device.
+pthread_t			droneCommandThread;		// Thread for sending commands to drone.
+pthread_t			androidGpsUpdateThread;	// Thread for sending periodic updates to android.
+pthread_t			androidCommandThread;	// Thread for getting Android directional commands.
 
 void *gpsPoll( void *arg );
 void *sendDroneCommands( void *arg );
@@ -95,7 +96,8 @@ void *gpsPoll( void *arg )
 		}
 
 		pthread_mutex_lock( &gpsFixMutex );
-		memcpy( (char *)&gpsFix, buffer, sizeof( GpsPoint ) / sizeof( char ) );
+		prevGpsFix = currGpsFix;
+		memcpy( (char *)&currGpsFix, buffer, sizeof( GpsPoint ) / sizeof( char ) );
 		pthread_mutex_unlock( &gpsFixMutex );
 	}
 	
@@ -116,25 +118,48 @@ void *sendDroneCommands( void *arg )
 		printf( "Command thread connected to %s.\n", DRONE_IP );
 	}
 
-	unsigned int i = 0;
+	// Set static destination to Allen Fieldhouse. Make it dynamic later.
+	GpsPoint destination;
+	destination.latitude = 38.954352;
+	destination.longitude = -95.252811;
+
+	sleep( 5 );
+	droneTakeOff();
+	
 	for(;;)
 	{
-		double lat;
-		double lon;
+		GpsPoint currFix = currGpsFix;
+		GpsPoint prevFix = prevGpsFix;
 
-		lat = gpsFix.latitude;
-		lon = gpsFix.longitude;
-
-		if( i++ % 2 == 0 )
+		int justRotated = 0;
+		if( getDistance( currFix, destination ) > LOCATION_EPSILON )
 		{
-			droneTakeOff();
+			double desiredHeading = getBearing( currFix, destination );
+			double currHeading = getHeading( currFix, prevFix );
+			double headingError = ( ( currHeading + 360 ) - ( desiredHeading + 360 ) ) - 720;
+
+			if( !justRotated && fabs( headingError ) > HEADING_EPSILON )
+			{
+				justRotated = 1;
+				if( headingError < 0 )
+				{
+					droneRotateRight();
+				}
+				else
+				{
+					droneRotateLeft();
+				}
+			}
+			else
+			{
+				justRotated = 0;
+				droneForward();
+			}
 		}
 		else
 		{
 			droneLand();
 		}
-
-		sleep( 10 );
 	}
 
 	pthread_exit( NULL );
@@ -157,13 +182,7 @@ void *sendAndroidGpsUpdates( void *arg )
 	for(;;)
 	{
 		char str[MAX_BUFFER_SIZE];
-		double lat;
-		double lon;
-
-		lat = gpsFix.latitude;
-		lon = gpsFix.longitude;
-
-		sprintf( str, "%f %f %d", lat, lon, i++ );
+		sprintf( str, "%f %f %d", currGpsFix.latitude, currGpsFix.longitude, i++ );
 		if( send( updateSock, str, sizeof( str ), 0 ) < 0 )
 		{
 			printf( "Error sending GPS update to Android device.\n" );
