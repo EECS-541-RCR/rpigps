@@ -1,5 +1,5 @@
-main: main.o network.o command.o
-	gcc -O3 -Wall -g -lpthread -o main main.o network.o command.o
+main: main.o network.o command.o gpsutil.o
+	gcc -O3 -Wall -g -lm -lpthread -o main main.o network.o command.o gpsutil.o
 
 main.o: main.c
 	gcc -O3 -Wall -g -lpthread -c main.c
@@ -9,6 +9,9 @@ network.o: network.c
 
 command.o: command.c
 	gcc -O3 -Wall -g -c command.c
+
+gpsutil.o: gpsutil.c
+	gcc -O3 -Wall -g -lm -c gpsutil.c
 
 usbgps: usbgps.c
 	gcc -O3 -Wall -g -lpthread usbgps.c -o usbgps
