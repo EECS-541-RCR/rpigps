@@ -287,7 +287,50 @@ void *getAndroidCommands( void *arg )
 				else
 				{
 					buffer[size] = '\0';
-					printf( "Receive %s\n", buffer );
+					if( strcmp( buffer, "cmd takeoff" ) == 0 )
+					{
+						droneTakeOff();
+					}
+					else if( strcmp( buffer, "cmd land" ) == 0 )
+					{
+						droneLand();
+					}
+					else if( strcmp( buffer, "cmd moveforward" ) == 0 )
+					{
+						droneForward();
+					}
+					else if( strcmp( buffer, "cmd moveback" ) == 0 )
+					{
+						droneBack();
+					}
+					else if( strcmp( buffer, "cmd moveleft" ) == 0 )
+					{
+						droneLeft();
+					}
+					else if( strcmp( buffer, "cmd moveright" ) == 0 )
+					{
+						droneRight();
+					}
+					else if( strcmp( buffer, "cmd moveup" ) == 0 )
+					{
+						droneUp();
+					}
+					else if( strcmp( buffer, "cmd movedown" ) == 0 )
+					{
+						droneDown();
+					}
+					else if( strcmp( buffer, "cmd turnleft" ) == 0 )
+					{
+						droneRotateLeft();
+					}
+					else if( strcmp( buffer, "cmd turnright" ) == 0 )
+					{
+						droneRotateRight();
+					}
+					else
+					{
+						fprintf( stderr, "Unrecognized Android command: %s\n", buffer );
+					}
 				}
 			}
 
