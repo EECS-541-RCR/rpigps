@@ -26,6 +26,8 @@
 #include "command.h"
 #include "gpsutil.h"
 
+typedef enum { false, true } bool;
+
 GpsPoint			currGpsFix;		// Current GPS fix. Parsed from GPS device NMEA strings.
 GpsPoint			prevGpsFix;		// Previous GPS fix, used for heading estimation.
 pthread_mutex_t		gpsFixMutex;	// Mutex for accessing curr/prev GpsFix structs.
@@ -131,7 +133,7 @@ void *sendDroneCommands( void *arg )
 		GpsPoint currFix = currGpsFix;
 		GpsPoint prevFix = prevGpsFix;
 
-		int justRotated = 0;
+		int justRotated = false;
 		if( getDistance( currFix, destination ) > LOCATION_EPSILON )
 		{
 			double desiredHeading = getBearing( currFix, destination );
@@ -140,7 +142,7 @@ void *sendDroneCommands( void *arg )
 
 			if( !justRotated && fabs( headingError ) > HEADING_EPSILON )
 			{
-				justRotated = 1;
+				justRotated = true;
 				if( headingError < 0 )
 				{
 					droneRotateRight();
@@ -152,7 +154,7 @@ void *sendDroneCommands( void *arg )
 			}
 			else
 			{
-				justRotated = 0;
+				justRotated = false;
 				droneForward();
 			}
 		}
