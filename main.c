@@ -28,17 +28,20 @@
 
 typedef enum { false, true } bool;
 
+// By default, wait for commands from Android device.
+bool				autonomousMode = false;
+
 GpsPoint			currGpsFix;		// Current GPS fix. Parsed from GPS device NMEA strings.
 GpsPoint			prevGpsFix;		// Previous GPS fix, used for heading estimation.
 pthread_mutex_t		gpsFixMutex;	// Mutex for accessing curr/prev GpsFix structs.
 
 pthread_t			gpsPollThread;			// Thread for getting GPS data from device.
-pthread_t			droneCommandThread;		// Thread for sending commands to drone.
+pthread_t			droneAutopilotThread;		// Thread for sending commands to drone.
 pthread_t			androidGpsUpdateThread;	// Thread for sending periodic updates to android.
 pthread_t			androidCommandThread;	// Thread for getting Android directional commands.
 
 void *gpsPoll( void *arg );
-void *sendDroneCommands( void *arg );
+void *droneAutopilot( void *arg );
 void *sendAndroidGpsUpdates( void *arg );
 void *getAndroidCommands( void *arg );
 
@@ -50,14 +53,28 @@ int main( int argc, char **argv )
 
 	pthread_mutex_init( &gpsFixMutex, NULL );
 
+	// Note that droneCmdSock and droneCmdAddr are extern globals from command.h.
+	// This socket is used by threads that send piloting commands to the drone, including
+	// the autopilot thread and the android command thread.
+	droneCmdSock = createUdpClientConnection( DRONE_IP, DRONE_COMMAND_PORT, &droneCmdAddr );
+	if( droneCmdSock < 0 )
+	{
+		fprintf( stderr, "couldn't connect to drone at %s.\n", DRONE_IP );
+		exit( EXIT_FAILURE );
+	}
+	else
+	{
+		printf( "Connected to drone at %s.\n", DRONE_IP );
+	}
+
 	pthread_create( &gpsPollThread, &attr, gpsPoll, (void *)NULL );
-	pthread_create( &droneCommandThread, &attr, sendDroneCommands, (void *)NULL );
+	pthread_create( &droneAutopilotThread, &attr, droneAutopilot, (void *)NULL );
 	pthread_create( &androidGpsUpdateThread, &attr, sendAndroidGpsUpdates, (void *)NULL );
 	pthread_create( &androidCommandThread, &attr, getAndroidCommands, (void *)NULL );
 
 	void *status;
 	pthread_join( gpsPollThread, &status );
-	pthread_join( droneCommandThread, &status );
+	pthread_join( droneAutopilotThread, &status );
 	pthread_join( androidGpsUpdateThread, &status );
 	pthread_join( androidCommandThread, &status );
 
@@ -106,20 +123,8 @@ void *gpsPoll( void *arg )
 	pthread_exit( NULL );
 }
 
-void *sendDroneCommands( void *arg )
+void *droneAutopilot( void *arg )
 {
-	// Note that droneCmdSock and droneCmdAddr are extern globals from command.h.
-	droneCmdSock = createUdpClientConnection( DRONE_IP, DRONE_COMMAND_PORT, &droneCmdAddr );
-	if( droneCmdSock < 0 )
-	{
-		fprintf( stderr, "Command thread couldn't connect to %s.\n", DRONE_IP );
-		exit( EXIT_FAILURE );
-	}
-	else
-	{
-		printf( "Command thread connected to %s.\n", DRONE_IP );
-	}
-
 	// Set static destination to Allen Fieldhouse. Make it dynamic later.
 	GpsPoint destination;
 	destination.latitude = 38.954352;
@@ -130,6 +135,11 @@ void *sendDroneCommands( void *arg )
 	
 	for(;;)
 	{
+		if( !autonomousMode )
+		{
+			continue;
+		}
+
 		GpsPoint currFix = currGpsFix;
 		GpsPoint prevFix = prevGpsFix;
 
@@ -249,7 +259,13 @@ void *getAndroidCommands( void *arg )
 			continue;
 		}
 
-		if( !fork() )
+		pid_t pid = fork();
+		if( pid < 0 )
+		{
+			fprintf( stderr, "Android command server couldn't fork.\n" );
+			exit( EXIT_FAILURE );
+		}
+		if( pid == 0 )
 		{
 			char buffer[MAX_BUFFER_SIZE];
 			close( handshakeSocket );	// Child doesn't need this socket.
@@ -278,9 +294,23 @@ void *getAndroidCommands( void *arg )
 			close( connectionSocket );
 			exit( EXIT_SUCCESS );
 		}
+		else
+		{
+			// Parent no longer needs this socket.
+			close( connectionSocket );
 
-		close( connectionSocket );	// Parent should get ready for next transmission.
-		sleep( 10 );
+			// Getting commands from Android device, go into slave mode.
+			autonomousMode = false;
+
+			// Wait for currently connected client to disconnect.
+			// This allows only one device to connect at a time.
+			int status;
+			wait( &status );
+
+			// When above child terminates, the Android device has disconnected,
+			// fo back to autonomous mode.
+			autonomousMode = true;
+		}
 	}
 
 	return 0;
