@@ -119,3 +119,28 @@ void droneRotateRight()
 	sendCommand( cmd );
 }
 
+void navdataInit()
+{
+  char cmd[MAX_COMMAND_LEN];
+
+  // stop bootstrap mode
+  snprintf( cmd, MAX_COMMAND_LEN, "AT*CONFIG=%d,\"general:navdata_demo\",\"TRUE\"\r", droneSeqNum++ );
+  sendCommand( cmd );
+    
+  // send ack to start navdata
+  snprintf( cmd, MAX_COMMAND_LEN, "AT*CTRL=%d,0\r", droneSeqNum++ );
+  sendCommand( cmd );
+  
+  // send command to trim sensors
+  snprintf( cmd, MAX_COMMAND_LEN, "AT*FTRIM=%d,\r", droneSeqNum++ );
+  sendCommand( cmd );
+}
+
+void navdataKeepAlive()
+{
+  char cmd[MAX_COMMAND_LEN];
+
+  // send watchdog if no command is sent to command port, so as to prevent drone from entering hover mode
+  snprintf( cmd, MAX_COMMAND_LEN, "AT*COMWDG=%d\r", droneSeqNum++ );
+  sendCommand( cmd );
+}

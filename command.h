@@ -25,5 +25,8 @@ void droneRight();
 void droneRotateLeft();
 void droneRotateRight();
 
+void navdataInit();
+void navdataKeepAlive();
+
 #endif
 

@@ -23,6 +23,7 @@
 #define MAX_NMEA_SENTENCE_LEN 1024
 
 #include "network.h"
+#include "navdata.h"
 #include "command.h"
 #include "gpsutil.h"
 
@@ -31,6 +32,7 @@ pthread_mutex_t				gpsFixMutex;	// Mutex for accessing gpsFix struct.
 
 pthread_t					gpsPollThread;			// Thread for getting GPS data from device.
 pthread_t					droneCommandThread;		// Thread for sending commands to drone.
+pthread_t					droneNavDataThread;		// Thread for receiving NavData from drone.
 pthread_t					androidGpsUpdateThread;	// Thread for sending periodic updates to android.
 pthread_t					androidCommandThread;	// Thread for getting Android directional commands.
 
@@ -38,6 +40,7 @@ void *gpsPoll( void *arg );
 void *sendDroneCommands( void *arg );
 void *sendAndroidGpsUpdates( void *arg );
 void *getAndroidCommands( void *arg );
+void *getNavData( void *arg );
 
 int main( int argc, char **argv )
 {
@@ -49,12 +52,14 @@ int main( int argc, char **argv )
 
 	pthread_create( &gpsPollThread, &attr, gpsPoll, (void *)NULL );
 	pthread_create( &droneCommandThread, &attr, sendDroneCommands, (void *)NULL );
+	pthread_create( &droneNavDataThread, &attr, getNavData, (void *)NULL );
 	pthread_create( &androidGpsUpdateThread, &attr, sendAndroidGpsUpdates, (void *)NULL );
 	pthread_create( &androidCommandThread, &attr, getAndroidCommands, (void *)NULL );
 
 	void *status;
 	pthread_join( gpsPollThread, &status );
 	pthread_join( droneCommandThread, &status );
+	pthread_join( droneNavDataThread, &status );
 	pthread_join( androidGpsUpdateThread, &status );
 	pthread_join( androidCommandThread, &status );
 
@@ -68,7 +73,7 @@ void *gpsPoll( void *arg )
 {
 	struct sockaddr_un saun;
 
-	saun.sun_family = AF_UNIX;
+/*	saun.sun_family = AF_UNIX;
 	strcpy( saun.sun_path, "serial_rpigps_data" );
 
 	int sockfd = socket( AF_UNIX, SOCK_STREAM, 0 );
@@ -98,7 +103,7 @@ void *gpsPoll( void *arg )
 		memcpy( (char *)&gpsFix, buffer, sizeof( GpsPoint ) / sizeof( char ) );
 		pthread_mutex_unlock( &gpsFixMutex );
 	}
-	
+*/	
 	pthread_exit( NULL );
 }
 
@@ -119,7 +124,7 @@ void *sendDroneCommands( void *arg )
 	unsigned int i = 0;
 	for(;;)
 	{
-		double lat;
+/*		double lat;
 		double lon;
 
 		lat = gpsFix.latitude;
@@ -133,7 +138,7 @@ void *sendDroneCommands( void *arg )
 		{
 			droneLand();
 		}
-
+*/
 		sleep( 10 );
 	}
 
@@ -265,3 +270,43 @@ void *getAndroidCommands( void *arg )
 	return 0;
 }
 
+void *getNavData( void *arg ) {
+  // Note that navDataSock and navDataAddr are extern globals from navdata.h.
+  createNavdataSocket();
+  if( navDataSock < 0 )
+  {
+    fprintf( stderr, "Navdata thread couldn't connect to %s.\n", DRONE_IP );
+    exit( EXIT_FAILURE );
+  }
+  else
+  {
+    printf( "Navdata thread connected to %s.\n", DRONE_IP );
+  }
+
+  // Start up dat navdata
+  tickleNavData();
+  navdataInit();
+
+  int navdata_size;
+  navdata_t navdata_struct;
+  socklen_t socketsize;
+
+  socketsize = sizeof(droneAddr_navdata);
+
+  unsigned int i = 0;
+  for(;;)
+  {
+    navdataKeepAlive();
+    tickleNavData();
+
+    //receive data 
+    navdata_size = recvfrom(navDataSock, &navdata_struct, sizeof(navdata_struct), 0, (struct sockaddr *)&droneAddr_navdata, &socketsize);
+
+    printf("\t%13.3f:%s\n", navdata_struct.navdata_option.theta,                  "pitch angle");
+    printf("\t%13.3f:%s\n", navdata_struct.navdata_option.phi,                    "roll  angle");
+    printf("\t%13.3f:%s\n", navdata_struct.navdata_option.psi,                    "yaw   angle");
+    printf("\n");
+  }
+
+  pthread_exit( NULL );
+}
