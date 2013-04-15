@@ -1,4 +1,6 @@
 #include "gpsutil.h"
+#include <stdio.h>
+#include <stdlib.h>
 #include <math.h>
 
 // Formulas taken from:
@@ -50,5 +52,72 @@ double getHeading( GpsPoint curr, GpsPoint prev )
 {
 	// Bearing and heading are different things, Google it.
 	return getBearing( prev, curr );
+}
+
+WaypointListNode *createWaypointList( char *buffer )
+{
+	if( buffer == NULL )
+	{
+		return NULL;
+	}
+	
+	GpsPoint waypoint;
+	WaypointListNode *head = NULL;
+	WaypointListNode *curr = head;
+
+	unsigned int i = 0;
+	while( *buffer != '\0' )
+	{
+		char temp[500];
+		// Get next latitude.
+		while( *buffer != ' ' && *buffer != '\0' )
+		{
+			temp[i++] = *buffer++;
+		}
+
+		buffer++;
+		temp[i] = '\0';
+		waypoint.latitude = atof( temp );
+
+		i = 0;
+		temp[0] = '\0';
+		// Get next longitude;
+		while( *buffer != ' ' && *buffer != '\0' )
+		{
+			temp[i++] = *buffer++;
+		}
+
+		buffer++;
+		temp[i] = '\0';
+		waypoint.longitude = atof( temp );
+
+		if( curr == NULL )
+		{
+			curr = malloc( sizeof( WaypointListNode ) );
+			curr->waypoint = waypoint;
+			curr->next = NULL;
+			head = curr;
+		}
+		else
+		{
+			WaypointListNode *temp = curr;
+			curr = malloc( sizeof( WaypointListNode ) );
+			curr->waypoint = waypoint;
+			curr->next = NULL;
+			temp->next = curr;
+		}
+	}
+
+	return head;
+}
+
+void destroyWaypointList( WaypointListNode *head )
+{
+	while( head != NULL )
+	{
+		WaypointListNode *temp = head;
+		head = head->next;
+		free( temp );
+	}
 }
 
