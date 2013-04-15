@@ -32,12 +32,14 @@ typedef enum { false, true } bool;
 // By default, wait for commands from Android device.
 bool				autonomousMode = false;
 
+int  yawDelta = 0;
+
 GpsPoint			currGpsFix;		// Current GPS fix. Parsed from GPS device NMEA strings.
 GpsPoint			prevGpsFix;		// Previous GPS fix, used for heading estimation.
 pthread_mutex_t		gpsFixMutex;	// Mutex for accessing curr/prev GpsFix structs.
 
 pthread_t					gpsPollThread;			// Thread for getting GPS data from device.
-pthread_t					droneCommandThread;		// Thread for sending commands to drone.
+pthread_t					droneAutopilotThread;		// Thread for sending commands to drone.
 pthread_t					droneNavDataThread;		// Thread for receiving NavData from drone.
 pthread_t					androidGpsUpdateThread;	// Thread for sending periodic updates to android.
 pthread_t					androidCommandThread;	// Thread for getting Android directional commands.
