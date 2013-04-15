@@ -173,74 +173,55 @@ void *droneAutopilot( void *arg )
 	{
 		if( autonomousMode )
 		{
-                  GpsPoint destination;
-                  destination.latitude = 38.954352;
-                  destination.longitude = -95.252811;
-
-			sleep( 5 );
+			sleep( 3 );
 			droneTakeOff();
 			for( ; currWaypoint < numWaypoints; currWaypoint++ )
 			{
-				GpsPoint currFix = currGpsFix;
-				GpsPoint prevFix = prevGpsFix;
-
-				int justRotated = false;
 				GpsPoint destination = waypoints[currWaypoint];
-				while( getDistance( currFix, destination ) > LOCATION_EPSILON )
+				while( getDistance( currGpsFix, destination ) > LOCATION_EPSILON )
 				{
+					unsigned int j;
+					for( j = 0; j < 10; j++ )
+					{
+						droneForward();
+					}
+
+					GpsPoint currFix = currGpsFix;
+					GpsPoint prevFix = prevGpsFix;
+
 					double desiredHeading = getBearing( currFix, destination );
 					double currHeading = getHeading( currFix, prevFix );
 					double headingError = ( ( currHeading + 360 ) - ( desiredHeading + 360 ) ) - 720;
 
-					if( !justRotated && fabs( headingError ) > HEADING_EPSILON )
+					if( fabs( headingError ) > HEADING_EPSILON )
 					{
-						justRotated = true;
-						rotate( headingError );
-					}
-					else
-					{
-						justRotated = false;
-						droneForward();
+						if( headingError < 0 )
+						{
+							droneRotateRight();
+						}
+						else
+						{
+							droneRotateLeft();
+						}
 					}
 				}
 			}
 
 			droneLand();
-                }
-                else if ( programmedMode )
-                {
-          if (navdata_ready) {
-            if (i % 2 == 0) {
-              rotate(30);
-              sleep(1);
-            } else {
-              rotate(-30);
-              sleep(1);
-            }
-                  /*if (i % 4 == 0) {
-                    droneTakeOff();
-                    printf("%d: Take Off\n", i);
-                    printAngles();
-                    sleep(5);
-                  } else if (i % 4 == 1) {
-                    rotate(30);
-                    printf("%d: Turn Right 30\n", i);
-                    printAngles();
-                    sleep(5);
-                  } else if (i % 4 == 2) {
-                    rotate(-30);
-                    printf("%d: Turn Left 30\n", i);
-                    printAngles();
-                    sleep(5);
-                  } else {
-                    droneLand();
-                    printf("%d: Land\n", i);
-                    printAngles();
-                    sleep(5);
-                  }*/
-          }
-                } 
-          i++;
+		}
+		else if ( programmedMode )
+		{
+			if (navdata_ready) {
+				if (i % 2 == 0) {
+					rotate(30);
+					sleep(1);
+				} else {
+					rotate(-30);
+					sleep(1);
+				}
+			}
+		} 
+		i++;
 	}
 
 	pthread_exit( NULL );
@@ -326,7 +307,7 @@ void *sendAndroidGpsUpdates( void *arg )
 				}
 			}
 		}
-	
+
 		// Parent no longer needs this socket.
 		close( connectionSocket );
 		sleep( 3 );
@@ -520,6 +501,8 @@ void *getAndroidCommands( void *arg )
 				len++;
 				printf( "%lf %lf\n", waypoints[i].latitude, waypoints[i].longitude );
 			}
+
+			autonomousMode = true;
 		}
 		else
 		{
@@ -620,50 +603,50 @@ void printState() {
  * @param theta - number between 0 to 360
  */
 void rotate(double theta) {
-  double initialYaw = navdata_struct.navdata_option.psi;
-  double finalYaw = initialYaw + 1000*theta;
-  double curYaw = initialYaw;
-  printf("Initial: %f\n", initialYaw);
-  printf("Final: %f\n", finalYaw);
-  if (theta > 0) {
-    //Going right
-    while (curYaw < finalYaw && curYaw < MAX_YAW) {
-      //droneRotateRight(); 
-      sleep(1);
-      curYaw = navdata_struct.navdata_option.psi;
-      printf("Cur: %f\n", curYaw);
-    }
-    // Gone past the +180
-    if (finalYaw > MAX_YAW) {
-      finalYaw = MIN_YAW + (finalYaw - MAX_YAW);
-      printf("Overshot going to %f\n", finalYaw);
-      while (curYaw < finalYaw) {
-        //droneRotateRight(); 
-        sleep(1);
-        curYaw = navdata_struct.navdata_option.psi;
-        printf("Cur: %f\n", curYaw);
-      }
-    }
-  } else {
-    //Going left
-    while (curYaw > finalYaw && curYaw > MIN_YAW) {
-      //droneRotateLeft(); 
-      sleep(1);
-      curYaw = navdata_struct.navdata_option.psi;
-      printf("Cur: %f\n", curYaw);
-    }
-    // Gone past the +180
-    if (finalYaw < MIN_YAW) {
-      finalYaw = MAX_YAW + (finalYaw + MIN_YAW);
-      printf("Undershot going to %f\n", finalYaw);
-      while (curYaw < finalYaw) {
-        //droneRotateRight(); 
-        sleep(1);
-        curYaw = navdata_struct.navdata_option.psi;
-        printf("Cur: %f\n", curYaw);
-      }
-    }
-  }
-  netYaw += theta;
+	double initialYaw = navdata_struct.navdata_option.psi;
+	double finalYaw = initialYaw + 1000*theta;
+	double curYaw = initialYaw;
+	printf("Initial: %f\n", initialYaw);
+	printf("Final: %f\n", finalYaw);
+	if (theta > 0) {
+		//Going right
+		while (curYaw < finalYaw && curYaw < MAX_YAW) {
+			//droneRotateRight(); 
+			sleep(1);
+			curYaw = navdata_struct.navdata_option.psi;
+			printf("Cur: %f\n", curYaw);
+		}
+		// Gone past the +180
+		if (finalYaw > MAX_YAW) {
+			finalYaw = MIN_YAW + (finalYaw - MAX_YAW);
+			printf("Overshot going to %f\n", finalYaw);
+			while (curYaw < finalYaw) {
+				//droneRotateRight(); 
+				sleep(1);
+				curYaw = navdata_struct.navdata_option.psi;
+				printf("Cur: %f\n", curYaw);
+			}
+		}
+	} else {
+		//Going left
+		while (curYaw > finalYaw && curYaw > MIN_YAW) {
+			//droneRotateLeft(); 
+			sleep(1);
+			curYaw = navdata_struct.navdata_option.psi;
+			printf("Cur: %f\n", curYaw);
+		}
+		// Gone past the +180
+		if (finalYaw < MIN_YAW) {
+			finalYaw = MAX_YAW + (finalYaw + MIN_YAW);
+			printf("Undershot going to %f\n", finalYaw);
+			while (curYaw < finalYaw) {
+				//droneRotateRight(); 
+				sleep(1);
+				curYaw = navdata_struct.navdata_option.psi;
+				printf("Cur: %f\n", curYaw);
+			}
+		}
+	}
+	netYaw += theta;
 }
 
