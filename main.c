@@ -21,6 +21,7 @@
 #include <termios.h>
 
 #define MAX_NMEA_SENTENCE_LEN 1024
+#define ENABLE_GPS 0
 
 #include "network.h"
 #include "navdata.h"
@@ -31,8 +32,11 @@ typedef enum { false, true } bool;
 
 // By default, wait for commands from Android device.
 bool				autonomousMode = false;
+bool				programmedMode = true;
 
-int  yawDelta = 0;
+int  netYaw = 0;
+navdata_t navdata_struct;
+bool navdata_ready = false;
 
 GpsPoint			currGpsFix;		// Current GPS fix. Parsed from GPS device NMEA strings.
 GpsPoint			prevGpsFix;		// Previous GPS fix, used for heading estimation.
@@ -49,6 +53,10 @@ void *droneAutopilot( void *arg );
 void *sendAndroidGpsUpdates( void *arg );
 void *getAndroidCommands( void *arg );
 void *getNavData( void *arg );
+
+void printAngles();
+void printState();
+void rotate(int theta);
 
 int main( int argc, char **argv )
 {
@@ -95,7 +103,7 @@ void *gpsPoll( void *arg )
 {
 	struct sockaddr_un saun;
 
-/*	saun.sun_family = AF_UNIX;
+	saun.sun_family = AF_UNIX;
 	strcpy( saun.sun_path, "serial_rpigps_data" );
 
 	int sockfd = socket( AF_UNIX, SOCK_STREAM, 0 );
@@ -126,59 +134,84 @@ void *gpsPoll( void *arg )
 		memcpy( (char *)&currGpsFix, buffer, sizeof( GpsPoint ) / sizeof( char ) );
 		pthread_mutex_unlock( &gpsFixMutex );
 	}
-*/	
+	
 	pthread_exit( NULL );
 }
 
 void *droneAutopilot( void *arg )
 {
 	// Set static destination to Allen Fieldhouse. Make it dynamic later.
-	GpsPoint destination;
-	destination.latitude = 38.954352;
-	destination.longitude = -95.252811;
 
-	sleep( 5 );
-	droneTakeOff();
-	
-	for(;;)
+        int i = 0;
+        while (true)
 	{
-		if( !autonomousMode )
+		if( autonomousMode )
 		{
-			continue;
-		}
+                  GpsPoint destination;
+                  destination.latitude = 38.954352;
+                  destination.longitude = -95.252811;
 
-		GpsPoint currFix = currGpsFix;
-		GpsPoint prevFix = prevGpsFix;
+                  sleep( 5 );
+                  droneTakeOff();
+                  GpsPoint currFix = currGpsFix;
+                  GpsPoint prevFix = prevGpsFix;
 
-		int justRotated = false;
-		if( getDistance( currFix, destination ) > LOCATION_EPSILON )
-		{
-			double desiredHeading = getBearing( currFix, destination );
-			double currHeading = getHeading( currFix, prevFix );
-			double headingError = ( ( currHeading + 360 ) - ( desiredHeading + 360 ) ) - 720;
+                  int justRotated = false;
+                  if( getDistance( currFix, destination ) > LOCATION_EPSILON )
+                  {
+                          double desiredHeading = getBearing( currFix, destination );
+                          double currHeading = getHeading( currFix, prevFix );
+                          double headingError = ( ( currHeading + 360 ) - ( desiredHeading + 360 ) ) - 720;
 
-			if( !justRotated && fabs( headingError ) > HEADING_EPSILON )
-			{
-				justRotated = true;
-				if( headingError < 0 )
-				{
-					droneRotateRight();
-				}
-				else
-				{
-					droneRotateLeft();
-				}
-			}
-			else
-			{
-				justRotated = false;
-				droneForward();
-			}
-		}
-		else
-		{
-			droneLand();
-		}
+                          if( !justRotated && fabs( headingError ) > HEADING_EPSILON )
+                          {
+                                  justRotated = true;
+                                  if( headingError < 0 )
+                                  {
+                                          droneRotateRight();
+                                  }
+                                  else
+                                  {
+                                          droneRotateLeft();
+                                  }
+                          }
+                          else
+                          {
+                                  justRotated = false;
+                                  droneForward();
+                          }
+                  }
+                  else
+                  {
+                          droneLand(); }
+                }
+                else if ( programmedMode )
+                {
+          if (navdata_ready) {
+                  if (i % 4 == 0) {
+                    droneTakeOff();
+                    printf("%d: Take Off\n", i);
+                    printAngles();
+                    sleep(5);
+                  } else if (i % 4 == 1) {
+                    droneRotateRight();
+                    printf("%d: Turn Right\n", i);
+                    printAngles();
+                    sleep(5);
+                  } else if (i % 4 == 2) {
+                    droneRotateLeft();
+                    printf("%d: Turn Left\n", i);
+                    printAngles();
+                    sleep(5);
+                  } else {
+                    droneLand();
+                    printf("%d: Land\n", i);
+                    printAngles();
+                    sleep(5);
+                  } 
+          }
+                } 
+          i++;
 	}
 
 	pthread_exit( NULL );
@@ -201,6 +234,10 @@ void *sendAndroidGpsUpdates( void *arg )
 	for(;;)
 	{
 		char str[MAX_BUFFER_SIZE];
+                if( isnan( currGpsFix.latitude ) || isnan( currGpsFix.longitude ) )
+                {
+                  continue;
+                }
 		sprintf( str, "%f %f %d", currGpsFix.latitude, currGpsFix.longitude, i++ );
 		if( send( updateSock, str, sizeof( str ), 0 ) < 0 )
 		{
@@ -384,12 +421,10 @@ void *getNavData( void *arg ) {
   navdataInit();
 
   int navdata_size;
-  navdata_t navdata_struct;
   socklen_t socketsize;
 
   socketsize = sizeof(droneAddr_navdata);
 
-  unsigned int i = 0;
   for(;;)
   {
     navdataKeepAlive();
@@ -397,12 +432,72 @@ void *getNavData( void *arg ) {
 
     //receive data 
     navdata_size = recvfrom(navDataSock, &navdata_struct, sizeof(navdata_struct), 0, (struct sockaddr *)&droneAddr_navdata, &socketsize);
+    
+    if (!navdata_ready && navdata_size > 0) {
+      navdata_ready = true;
+      printf("Navdata READY!\n");
+    }
 
-    printf("\t%13.3f:%s\n", navdata_struct.navdata_option.theta,                  "pitch angle");
-    printf("\t%13.3f:%s\n", navdata_struct.navdata_option.phi,                    "roll  angle");
-    printf("\t%13.3f:%s\n", navdata_struct.navdata_option.psi,                    "yaw   angle");
-    printf("\n");
   }
 
   pthread_exit( NULL );
+}
+
+void printAngles() {
+  printf("drone's position:\n");
+  printf("\t%13.3f:%s\n", navdata_struct.navdata_option.theta, "pitch angle");
+  printf("\t%13.3f:%s\n", navdata_struct.navdata_option.phi, "roll  angle");
+  printf("\t%13.3f:%s\n", navdata_struct.navdata_option.psi, "yaw   angle");
+  printf("\n");
+}
+
+void printState() {
+  printf("drone's state:\n");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 <<  0))!=0, "FLY MASK");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 <<  1))!=0, "VIDEO MASK");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 <<  2))!=0, "VISION MASK");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 <<  3))!=0, "CONTROL ALGO");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 <<  4))!=0, "ALTITUDE CONTROL ALGO");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 <<  5))!=0, "USER feedback");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 <<  6))!=0, "Control command ACK");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 <<  7))!=0, "Trim command ACK");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 <<  8))!=0, "Trim running");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 <<  9))!=0, "Trim result");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 << 10))!=0, "Navdata demo");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 << 11))!=0, "Navdata bootstrap");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 << 12))!=0, "Motors status");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 << 13))!=0, "Communication Lost");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 << 14))!=0, "problem with gyrometers");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 << 15))!=0, "VBat low");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 << 16))!=0, "VBat high");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 << 17))!=0, "Timer elapsed");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 << 18))!=0, "Power");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 << 19))!=0, "Angles");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 << 20))!=0, "Wind");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 << 21))!=0, "Ultrasonic sensor");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 << 22))!=0, "Cutout system detection");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 << 23))!=0, "PIC Version number OK");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 << 24))!=0, "ATCodec thread");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 << 25))!=0, "Navdata thread");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 << 26))!=0, "Video thread");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 << 27))!=0, "Acquisition thread");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 << 28))!=0, "CTRL watchdog");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 << 29))!=0, "ADC Watchdog");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 << 30))!=0, "Communication Watchdog");
+  printf("\t%13d:%s\n",(navdata_struct.navdata_header.state & (1 << 31))!=0, "Emergency landing");
+}
+
+/**
+ * @param theta - number between +180 and -180
+ */
+void rotate(int theta) {
+  int initialYaw = navdata_struct.navdata_option.psi;
+  int deltaYaw = initialYaw + 1000*theta;
+  int curYaw = initialYaw;
+  if (theta > 0) {
+    //Going clkwise
+  } else {
+    //Going counterclkwise 
+  }
+  netYaw += theta;
 }
