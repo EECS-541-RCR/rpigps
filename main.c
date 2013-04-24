@@ -20,6 +20,7 @@
 #include <fcntl.h>
 #include <termios.h>
 
+#define MAX_NUM_WAYPOINTS 20
 #define MAX_NMEA_SENTENCE_LEN 1024
 #define ENABLE_GPS 0
 #define ENABLE_NAVDATA 0
@@ -42,6 +43,9 @@ bool navdata_ready = false;
 GpsPoint			currGpsFix;		// Current GPS fix. Parsed from GPS device NMEA strings.
 GpsPoint			prevGpsFix;		// Previous GPS fix, used for heading estimation.
 pthread_mutex_t		gpsFixMutex;	// Mutex for accessing curr/prev GpsFix structs.
+
+GpsPoint			waypoints[MAX_NUM_WAYPOINTS];
+unsigned int		numWaypoints = 0;
 
 pthread_t					gpsPollThread;			// Thread for getting GPS data from device.
 pthread_t					droneAutopilotThread;		// Thread for sending commands to drone.
@@ -312,101 +316,145 @@ void *getAndroidCommands( void *arg )
 			continue;
 		}
 
-		pid_t pid = fork();
-		if( pid < 0 )
+		char buffer[MAX_BUFFER_SIZE];
+		int size = recv( connectionSocket, buffer, MAX_BUFFER_SIZE, 0 );
+		if( size == -1 )
 		{
-			fprintf( stderr, "Android command server couldn't fork.\n" );
+			printf( "recv() failure, errno = %d\n", errno );
+			close( handshakeSocket );
+			close( connectionSocket );
 			exit( EXIT_FAILURE );
-		}
-		if( pid == 0 )
-		{
-			char buffer[MAX_BUFFER_SIZE];
-			close( handshakeSocket );	// Child doesn't need this socket.
 
-			while( 1 )
+		}
+
+		buffer[size] = '\0';
+		if( strcmp( buffer, "manual" ) == 0 )
+		{
+			pid_t pid = fork();
+			if( pid < 0 )
 			{
-				int size = recv( connectionSocket, buffer, MAX_BUFFER_SIZE, 0 );
-				if( size == -1 )
+				fprintf( stderr, "Android command server couldn't fork.\n" );
+				exit( EXIT_FAILURE );
+			}
+			if( pid == 0 )
+			{
+				close( handshakeSocket );	// Child doesn't need this socket.
+	
+				while( 1 )
 				{
-					printf( "recv() failure, errno = %d\n", errno );
-					close( connectionSocket );
-					exit( EXIT_FAILURE );
-				}
-				else if( size == 0 )
-				{
-					// Client disconnected.
-					break;
-				}
-				else
-				{
-					buffer[size] = '\0';
-					if( strcmp( buffer, "cmd takeoff" ) == 0 )
+					int size = recv( connectionSocket, buffer, MAX_BUFFER_SIZE, 0 );
+					if( size == -1 )
 					{
-						droneTakeOff();
+						printf( "recv() failure, errno = %d\n", errno );
+						close( connectionSocket );
+						exit( EXIT_FAILURE );
 					}
-					else if( strcmp( buffer, "cmd land" ) == 0 )
+					else if( size == 0 )
 					{
-						droneLand();
-					}
-					else if( strcmp( buffer, "cmd moveforward" ) == 0 )
-					{
-						droneForward();
-					}
-					else if( strcmp( buffer, "cmd moveback" ) == 0 )
-					{
-						droneBack();
-					}
-					else if( strcmp( buffer, "cmd moveleft" ) == 0 )
-					{
-						droneLeft();
-					}
-					else if( strcmp( buffer, "cmd moveright" ) == 0 )
-					{
-						droneRight();
-					}
-					else if( strcmp( buffer, "cmd moveup" ) == 0 )
-					{
-						droneUp();
-					}
-					else if( strcmp( buffer, "cmd movedown" ) == 0 )
-					{
-						droneDown();
-					}
-					else if( strcmp( buffer, "cmd turnleft" ) == 0 )
-					{
-						droneRotateLeft();
-					}
-					else if( strcmp( buffer, "cmd turnright" ) == 0 )
-					{
-						droneRotateRight();
+						printf( "Android client disconnected\n" );
+						// Client disconnected.
+						break;
 					}
 					else
 					{
-						fprintf( stderr, "Unrecognized Android command: %s\n", buffer );
+						buffer[size] = '\0';
+						printf( "Recv :: %s\n", buffer );
+						if( strcmp( buffer, "cmd takeoff" ) == 0 )
+						{
+							droneTakeOff();
+						}
+						else if( strcmp( buffer, "cmd land" ) == 0 )
+						{
+							droneLand();
+						}
+						else if( strcmp( buffer, "cmd moveforward" ) == 0 )
+						{
+							droneForward();
+						}
+						else if( strcmp( buffer, "cmd moveback" ) == 0 )
+						{
+							droneBack();
+						}
+						else if( strcmp( buffer, "cmd moveleft" ) == 0 )
+						{
+							droneLeft();
+						}
+						else if( strcmp( buffer, "cmd moveright" ) == 0 )
+						{
+							droneRight();
+						}
+						else if( strcmp( buffer, "cmd moveup" ) == 0 )
+						{
+							droneUp();
+						}
+						else if( strcmp( buffer, "cmd movedown" ) == 0 )
+						{
+							droneDown();
+						}
+						else if( strcmp( buffer, "cmd turnleft" ) == 0 )
+						{
+							droneRotateLeft();
+						}
+						else if( strcmp( buffer, "cmd turnright" ) == 0 )
+						{
+							droneRotateRight();
+						}
+						else
+						{
+							fprintf( stderr, "Unrecognized Android command: %s\n", buffer );
+						}
 					}
 				}
+	
+				close( connectionSocket );
+				exit( EXIT_SUCCESS );
 			}
+			else
+			{
+				// Parent no longer needs this socket.
+				close( connectionSocket );
+	
+				// Getting commands from Android device, go into slave mode.
+				autonomousMode = false;
+	
+				// Wait for currently connected client to disconnect.
+				// This allows only one device to connect at a time.
+				int status;
+				wait( &status );
+	
+				// When above child terminates, the Android device has disconnected,
+				// fo back to autonomous mode.
+				autonomousMode = true;
+			}
+		}
+		// If the first string wasn't "manual", assume it's a waypoint list.
+		else if( strncmp( buffer, "list", 4 ) == 0 )
+		{
+			sscanf( &buffer[4], "%d", &numWaypoints );
 
-			close( connectionSocket );
-			exit( EXIT_SUCCESS );
+			printf( "%s\n", buffer );
+			unsigned int i;
+			unsigned int len = 0;
+			while( buffer[len] != ' ' ) len++;
+			len++;
+			while( buffer[len] != ' ' ) len++;
+			len++;
+			for( i = 0; i < numWaypoints; i++ )
+			{
+				sscanf( &buffer[len], "%lf %lf", &waypoints[i].latitude, &waypoints[i].longitude );
+				while( buffer[len] != ' ' ) len++;
+				len++;
+				while( buffer[len] != ' ' ) len++;
+				len++;
+				printf( "%lf %lf\n", waypoints[i].latitude, waypoints[i].longitude );
+			}
 		}
 		else
 		{
-			// Parent no longer needs this socket.
-			close( connectionSocket );
-
-			// Getting commands from Android device, go into slave mode.
-			autonomousMode = false;
-
-			// Wait for currently connected client to disconnect.
-			// This allows only one device to connect at a time.
-			int status;
-			wait( &status );
-
-			// When above child terminates, the Android device has disconnected,
-			// fo back to autonomous mode.
-			autonomousMode = true;
+			printf( "Unrecognized string \'%s\'.\n", buffer );
 		}
+
+		close( connectionSocket );
 	}
 
 	return 0;
