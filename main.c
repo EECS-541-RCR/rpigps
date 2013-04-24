@@ -488,11 +488,11 @@ void printState() {
 }
 
 /**
- * @param theta - number between +180 and -180
+ * @param theta - number between 0 to 360
  */
-void rotate(int theta) {
+void rotate(double theta) {
   int initialYaw = navdata_struct.navdata_option.psi;
-  int deltaYaw = initialYaw + 1000*theta;
+  int finalYaw = initialYaw + 1000*theta;
   int curYaw = initialYaw;
   if (theta > 0) {
     //Going clkwise
