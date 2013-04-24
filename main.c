@@ -22,6 +22,7 @@
 
 #define MAX_NMEA_SENTENCE_LEN 1024
 #define ENABLE_GPS 0
+#define ENABLE_NAVDATA 0
 
 #include "network.h"
 #include "navdata.h"
@@ -80,17 +81,25 @@ int main( int argc, char **argv )
 		printf( "Connected to drone at %s.\n", DRONE_IP );
 	}
 
+	#if ENABLE_GPS
 	pthread_create( &gpsPollThread, &attr, gpsPoll, (void *)NULL );
-	pthread_create( &droneAutopilotThread, &attr, droneAutopilot, (void *)NULL );
-	pthread_create( &droneNavDataThread, &attr, getNavData, (void *)NULL );
 	pthread_create( &androidGpsUpdateThread, &attr, sendAndroidGpsUpdates, (void *)NULL );
+	#endif
+	#if ENABLE_NAVDATA
+	pthread_create( &droneNavDataThread, &attr, getNavData, (void *)NULL );
+	#endif
+	pthread_create( &droneAutopilotThread, &attr, droneAutopilot, (void *)NULL );
 	pthread_create( &androidCommandThread, &attr, getAndroidCommands, (void *)NULL );
 
 	void *status;
+	#if ENABLE_GPS
 	pthread_join( gpsPollThread, &status );
-	pthread_join( droneAutopilotThread, &status );
-	pthread_join( droneNavDataThread, &status );
 	pthread_join( androidGpsUpdateThread, &status );
+	#endif
+	#if ENABLE_NAVDATA
+	pthread_join( droneNavDataThread, &status );
+	#endif
+	pthread_join( droneAutopilotThread, &status );
 	pthread_join( androidCommandThread, &status );
 
 	pthread_mutex_destroy( &gpsFixMutex );
