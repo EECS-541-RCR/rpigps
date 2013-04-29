@@ -1,3 +1,8 @@
+main
+dummyserver
+dummyclient
+usbgps
+*.o
 *~
 commands_to_drone
 gps_to_android
