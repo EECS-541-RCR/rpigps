@@ -242,36 +242,96 @@ void *droneAutopilot( void *arg )
 
 void *sendAndroidGpsUpdates( void *arg )
 {
-	int updateSock = createTcpClientConnection( ANDROID_IP, ANDROID_GPS_UPDATE_PORT );
-	if( updateSock < 0 )
+	int handshakeSocket;
+	struct sockaddr_in myaddr;
+
+	handshakeSocket = socket( PF_INET, SOCK_STREAM, 0 );
+	if( handshakeSocket == -1 )
 	{
-		fprintf( stderr, "Android GPS update thread couldn't connect to %s.\n", ANDROID_IP );
+		printf( "Android GPS update thread: socket() failure, errno = %d\n", errno );
 		exit( EXIT_FAILURE );
 	}
-	else
+
+	int yes = 1;
+	if( setsockopt( handshakeSocket, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof( int ) ) == -1 )
 	{
-		printf( "Android GPS update thread connected to %s.\n", ANDROID_IP );
+		printf( "Android GPS update thread: setsockopt() failure, errno = %d\n", errno );
+		close( handshakeSocket );
+		exit( EXIT_FAILURE );
 	}
 
-	int i = 0;
-	for(;;)
+	myaddr.sin_family = AF_INET;
+	myaddr.sin_port = htons( atoi( ANDROID_GPS_UPDATE_PORT ) );
+	myaddr.sin_addr.s_addr = htonl( INADDR_ANY );
+	memset( &( myaddr.sin_zero ), '\0', 8 );
+
+	if( bind( handshakeSocket, (struct sockaddr *)&myaddr, sizeof( struct sockaddr ) ) == -1 )
 	{
-		char str[MAX_BUFFER_SIZE];
-		if( isnan( currGpsFix.latitude ) || isnan( currGpsFix.longitude ) )
+		printf( "Android GPS update thread: bind() failure, errno = %d\n", errno );
+		close( handshakeSocket );
+		exit( EXIT_FAILURE );
+	}
+
+	if( listen( handshakeSocket, 10 ) == -1 )
+	{
+		printf( "Android GPS update thread: listen() failure, errno = %d\n", errno );
+		close( handshakeSocket );
+		exit( EXIT_FAILURE );
+	}
+
+	while( 1 )
+	{
+		struct sockaddr_in theiraddr;
+		socklen_t theiraddr_size = sizeof( struct sockaddr_in );
+
+		/* Accept the incoming connection request. */
+		int connectionSocket = accept( handshakeSocket, (struct sockaddr *)&theiraddr, &theiraddr_size );
+		if( connectionSocket == -1 )
 		{
+			printf( "Android GPS update thread: accept() failure, errno = %d\n", errno );
 			continue;
 		}
-		sprintf( str, "%f %f %d", currGpsFix.latitude, currGpsFix.longitude, i++ );
-		if( send( updateSock, str, sizeof( str ), 0 ) < 0 )
+
+		pid_t pid = fork();
+		if( pid < 0 )
 		{
-			printf( "Error sending GPS update to Android device.\n" );
+			fprintf( stderr, "Android command server couldn't fork.\n" );
 			exit( EXIT_FAILURE );
 		}
+		if( pid == 0 )
+		{
+			close( handshakeSocket );	// Child doesn't need this socket.
 
-		sleep( 1 );
+			while( 1 )
+			{
+				sleep( 1 );
+
+				char buffer[MAX_BUFFER_SIZE];
+				currGpsFix.latitude = -1489.15;
+				currGpsFix.longitude = 3258.236512369;
+				snprintf( buffer, MAX_BUFFER_SIZE, "%lf %lf", currGpsFix.latitude, currGpsFix.longitude );
+				int size = send( connectionSocket, buffer, MAX_BUFFER_SIZE, 0 );
+				if( size == -1 )
+				{
+					printf( "recv() failure, errno = %d\n", errno );
+					close( connectionSocket );
+					exit( EXIT_FAILURE );
+				}
+				else if( size == 0 )
+				{
+					printf( "Android client disconnected\n" );
+					// Client disconnected.
+					break;
+				}
+			}
+		}
+	
+		// Parent no longer needs this socket.
+		close( connectionSocket );
+		sleep( 3 );
 	}
 
-	pthread_exit( NULL );
+	return 0;
 }
 
 void *getAndroidCommands( void *arg )
