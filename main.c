@@ -167,44 +167,39 @@ void *droneAutopilot( void *arg )
 	{
 		if( autonomousMode )
 		{
-<<<<<<< HEAD
                   GpsPoint destination;
                   destination.latitude = 38.954352;
                   destination.longitude = -95.252811;
 
-                  sleep( 5 );
-                  droneTakeOff();
-                  GpsPoint currFix = currGpsFix;
-                  GpsPoint prevFix = prevGpsFix;
+			sleep( 5 );
+			droneTakeOff();
+			for( ; currWaypoint < numWaypoints; currWaypoint++ )
+			{
+				GpsPoint currFix = currGpsFix;
+				GpsPoint prevFix = prevGpsFix;
 
-                  int justRotated = false;
-                  if( getDistance( currFix, destination ) > LOCATION_EPSILON )
-                  {
-                          double desiredHeading = getBearing( currFix, destination );
-                          double currHeading = getHeading( currFix, prevFix );
-                          double headingError = ( ( currHeading + 360 ) - ( desiredHeading + 360 ) ) - 720;
+				int justRotated = false;
+				GpsPoint destination = waypoints[currWaypoint];
+				while( getDistance( currFix, destination ) > LOCATION_EPSILON )
+				{
+					double desiredHeading = getBearing( currFix, destination );
+					double currHeading = getHeading( currFix, prevFix );
+					double headingError = ( ( currHeading + 360 ) - ( desiredHeading + 360 ) ) - 720;
 
-                          if( !justRotated && fabs( headingError ) > HEADING_EPSILON )
-                          {
-                                  justRotated = true;
-                                  if( headingError < 0 )
-                                  {
-                                          droneRotateRight();
-                                  }
-                                  else
-                                  {
-                                          droneRotateLeft();
-                                  }
-                          }
-                          else
-                          {
-                                  justRotated = false;
-                                  droneForward();
-                          }
-                  }
-                  else
-                  {
-                          droneLand(); }
+					if( !justRotated && fabs( headingError ) > HEADING_EPSILON )
+					{
+						justRotated = true;
+						rotate( headingError );
+					}
+					else
+					{
+						justRotated = false;
+						droneForward();
+					}
+				}
+			}
+
+			droneLand();
                 }
                 else if ( programmedMode )
                 {
@@ -240,65 +235,6 @@ void *droneAutopilot( void *arg )
           }
                 } 
           i++;
-=======
-			sleep( 5 );
-			droneTakeOff();
-			for( ; currWaypoint < numWaypoints; currWaypoint++ )
-			{
-				GpsPoint currFix = currGpsFix;
-				GpsPoint prevFix = prevGpsFix;
-
-				int justRotated = false;
-				GpsPoint destination = waypoints[currWaypoint];
-				while( getDistance( currFix, destination ) > LOCATION_EPSILON )
-				{
-					double desiredHeading = getBearing( currFix, destination );
-					double currHeading = getHeading( currFix, prevFix );
-					double headingError = ( ( currHeading + 360 ) - ( desiredHeading + 360 ) ) - 720;
-
-					if( !justRotated && fabs( headingError ) > HEADING_EPSILON )
-					{
-						justRotated = true;
-						rotate( headingError );
-					}
-					else
-					{
-						justRotated = false;
-						droneForward();
-					}
-				}
-			}
-
-			droneLand();
-		}
-		else if ( programmedMode )
-		{
-			if (navdata_ready) {
-				if (i % 4 == 0) {
-					droneTakeOff();
-					printf("%d: Take Off\n", i);
-					printAngles();
-					sleep(5);
-				} else if (i % 4 == 1) {
-					droneRotateRight();
-					printf("%d: Turn Right\n", i);
-					printAngles();
-					sleep(5);
-				} else if (i % 4 == 2) {
-					droneRotateLeft();
-					printf("%d: Turn Left\n", i);
-					printAngles();
-					sleep(5);
-				} else {
-					droneLand();
-					printf("%d: Land\n", i);
-					printAngles();
-					sleep(5);
-				} 
-			}
-		} 
-		i++;
->>>>>>> 641083f0f442ab6fd9395dbfa74b479545d01a36
 	}
 
 	pthread_exit( NULL );
@@ -622,7 +558,6 @@ void printState() {
 /**
  * @param theta - number between 0 to 360
  */
-<<<<<<< HEAD
 void rotate(double theta) {
   double initialYaw = navdata_struct.navdata_option.psi;
   double finalYaw = initialYaw + 1000*theta;
@@ -669,17 +604,5 @@ void rotate(double theta) {
     }
   }
   netYaw += theta;
-=======
-void rotate(int theta) {
-	int initialYaw = navdata_struct.navdata_option.psi;
-	int deltaYaw = initialYaw + 1000*theta;
-	int curYaw = initialYaw;
-	if (theta > 0) {
-		//Going clkwise
-	} else {
-		//Going counterclkwise 
-	}
-	netYaw += theta;
->>>>>>> 641083f0f442ab6fd9395dbfa74b479545d01a36
 }
 
