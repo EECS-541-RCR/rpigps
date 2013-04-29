@@ -22,7 +22,10 @@
 
 #define MAX_NMEA_SENTENCE_LEN 1024
 #define ENABLE_GPS 0
-#define ENABLE_NAVDATA 0
+#define ENABLE_NAVDATA 1
+
+#define MAX_YAW 180000
+#define MIN_YAW -180000
 
 #include "network.h"
 #include "navdata.h"
@@ -35,7 +38,7 @@ typedef enum { false, true } bool;
 bool				autonomousMode = false;
 bool				programmedMode = true;
 
-int  netYaw = 0;
+double  netYaw = 0;
 navdata_t navdata_struct;
 bool navdata_ready = false;
 
@@ -57,7 +60,7 @@ void *getNavData( void *arg );
 
 void printAngles();
 void printState();
-void rotate(int theta);
+void rotate(double theta);
 
 int main( int argc, char **argv )
 {
@@ -197,19 +200,26 @@ void *droneAutopilot( void *arg )
                 else if ( programmedMode )
                 {
           if (navdata_ready) {
-                  if (i % 4 == 0) {
+            if (i % 2 == 0) {
+              rotate(30);
+              sleep(1);
+            } else {
+              rotate(-30);
+              sleep(1);
+            }
+                  /*if (i % 4 == 0) {
                     droneTakeOff();
                     printf("%d: Take Off\n", i);
                     printAngles();
                     sleep(5);
                   } else if (i % 4 == 1) {
-                    droneRotateRight();
-                    printf("%d: Turn Right\n", i);
+                    rotate(30);
+                    printf("%d: Turn Right 30\n", i);
                     printAngles();
                     sleep(5);
                   } else if (i % 4 == 2) {
-                    droneRotateLeft();
-                    printf("%d: Turn Left\n", i);
+                    rotate(-30);
+                    printf("%d: Turn Left 30\n", i);
                     printAngles();
                     sleep(5);
                   } else {
@@ -217,7 +227,7 @@ void *droneAutopilot( void *arg )
                     printf("%d: Land\n", i);
                     printAngles();
                     sleep(5);
-                  } 
+                  }*/
           }
                 } 
           i++;
@@ -500,13 +510,49 @@ void printState() {
  * @param theta - number between 0 to 360
  */
 void rotate(double theta) {
-  int initialYaw = navdata_struct.navdata_option.psi;
-  int finalYaw = initialYaw + 1000*theta;
-  int curYaw = initialYaw;
+  double initialYaw = navdata_struct.navdata_option.psi;
+  double finalYaw = initialYaw + 1000*theta;
+  double curYaw = initialYaw;
+  printf("Initial: %f\n", initialYaw);
+  printf("Final: %f\n", finalYaw);
   if (theta > 0) {
-    //Going clkwise
+    //Going right
+    while (curYaw < finalYaw && curYaw < MAX_YAW) {
+      //droneRotateRight(); 
+      sleep(1);
+      curYaw = navdata_struct.navdata_option.psi;
+      printf("Cur: %f\n", curYaw);
+    }
+    // Gone past the +180
+    if (finalYaw > MAX_YAW) {
+      finalYaw = MIN_YAW + (finalYaw - MAX_YAW);
+      printf("Overshot going to %f\n", finalYaw);
+      while (curYaw < finalYaw) {
+        //droneRotateRight(); 
+        sleep(1);
+        curYaw = navdata_struct.navdata_option.psi;
+        printf("Cur: %f\n", curYaw);
+      }
+    }
   } else {
-    //Going counterclkwise 
+    //Going left
+    while (curYaw > finalYaw && curYaw > MIN_YAW) {
+      //droneRotateLeft(); 
+      sleep(1);
+      curYaw = navdata_struct.navdata_option.psi;
+      printf("Cur: %f\n", curYaw);
+    }
+    // Gone past the +180
+    if (finalYaw < MIN_YAW) {
+      finalYaw = MAX_YAW + (finalYaw + MIN_YAW);
+      printf("Undershot going to %f\n", finalYaw);
+      while (curYaw < finalYaw) {
+        //droneRotateRight(); 
+        sleep(1);
+        curYaw = navdata_struct.navdata_option.psi;
+        printf("Cur: %f\n", curYaw);
+      }
+    }
   }
   netYaw += theta;
 }
