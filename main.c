@@ -36,9 +36,9 @@ typedef enum { false, true } bool;
 bool				autonomousMode = false;
 bool				programmedMode = true;
 
-int  netYaw = 0;
-navdata_t navdata_struct;
-bool navdata_ready = false;
+int					netYaw = 0;
+navdata_t			navdata_struct;
+bool				navdata_ready = false;
 
 GpsPoint			currGpsFix;		// Current GPS fix. Parsed from GPS device NMEA strings.
 GpsPoint			prevGpsFix;		// Previous GPS fix, used for heading estimation.
@@ -48,11 +48,11 @@ GpsPoint			waypoints[MAX_NUM_WAYPOINTS];
 unsigned int		numWaypoints = 0;
 unsigned int		currWaypoint = 0;
 
-pthread_t					gpsPollThread;			// Thread for getting GPS data from device.
-pthread_t					droneAutopilotThread;		// Thread for sending commands to drone.
-pthread_t					droneNavDataThread;		// Thread for receiving NavData from drone.
-pthread_t					androidGpsUpdateThread;	// Thread for sending periodic updates to android.
-pthread_t					androidCommandThread;	// Thread for getting Android directional commands.
+pthread_t			gpsPollThread;			// Thread for getting GPS data from device.
+pthread_t			droneAutopilotThread;		// Thread for sending commands to drone.
+pthread_t			droneNavDataThread;		// Thread for receiving NavData from drone.
+pthread_t			androidGpsUpdateThread;	// Thread for sending periodic updates to android.
+pthread_t			androidCommandThread;	// Thread for getting Android directional commands.
 
 void *gpsPoll( void *arg );
 void *droneAutopilot( void *arg );
@@ -159,8 +159,6 @@ void *gpsPoll( void *arg )
 
 void *droneAutopilot( void *arg )
 {
-	// Set static destination to Allen Fieldhouse. Make it dynamic later.
-
 	int i = 0;
 	while( true )
 	{
@@ -175,7 +173,7 @@ void *droneAutopilot( void *arg )
 
 				int justRotated = false;
 				GpsPoint destination = waypoints[currWaypoint];
-				if( getDistance( currFix, destination ) > LOCATION_EPSILON )
+				while( getDistance( currFix, destination ) > LOCATION_EPSILON )
 				{
 					double desiredHeading = getBearing( currFix, destination );
 					double currHeading = getHeading( currFix, prevFix );
@@ -199,11 +197,9 @@ void *droneAutopilot( void *arg )
 						droneForward();
 					}
 				}
-				else
-				{
-					droneLand();
-				}
 			}
+
+			droneLand();
 		}
 		else if ( programmedMode )
 		{
