@@ -182,14 +182,7 @@ void *droneAutopilot( void *arg )
 					if( !justRotated && fabs( headingError ) > HEADING_EPSILON )
 					{
 						justRotated = true;
-						if( headingError < 0 )
-						{
-							droneRotateRight();
-						}
-						else
-						{
-							droneRotateLeft();
-						}
+						rotate( headingError );
 					}
 					else
 					{
@@ -562,3 +555,4 @@ void rotate(int theta) {
 	}
 	netYaw += theta;
 }
+
