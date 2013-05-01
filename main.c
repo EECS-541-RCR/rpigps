@@ -94,6 +94,12 @@ int main( int argc, char **argv )
 	waypoints[0].latitude = 38.954352;
 	waypoints[0].longitude = -95.252811;
 
+	// Initialize GPS fixes with invalid data.
+	currGpsFix.latitude = NAN;
+	currGpsFix.longitude = NAN;
+	prevGpsFix.latitude = NAN;
+	prevGpsFix.longitude = NAN;
+
 #if ENABLE_GPS
 	pthread_create( &gpsPollThread, &attr, gpsPoll, (void *)NULL );
 #endif
@@ -265,10 +271,7 @@ void *sendAndroidGpsUpdates( void *arg )
 	myaddr.sin_addr.s_addr = htonl( INADDR_ANY );
 	memset( &( myaddr.sin_zero ), '\0', 8 );
 
-	if( bind( handshakeSocket, (struct sockaddr *)&myaddr, sizeof( struct sockaddr ) ) == -1 )
-	{
-		printf( "Android GPS update thread: bind() failure, errno = %d\n", errno );
-		close( handshakeSocket );
+	if( bind( handshakeSocket, (struct sockaddr *)&myaddr, sizeof( struct sockaddr ) ) == -1 ) { printf( "Android GPS update thread: bind() failure, errno = %d\n", errno ); close( handshakeSocket );
 		exit( EXIT_FAILURE );
 	}
 
@@ -292,7 +295,7 @@ void *sendAndroidGpsUpdates( void *arg )
 			continue;
 		}
 
-		printf( "Got connection for GPS updates." );
+		printf( "Got connection for GPS updates.\n" );
 		pid_t pid = fork();
 		if( pid < 0 )
 		{
@@ -308,25 +311,8 @@ void *sendAndroidGpsUpdates( void *arg )
 				sleep( 1 );
 
 				char buffer[MAX_BUFFER_SIZE];
-				snprintf( buffer, MAX_BUFFER_SIZE, "%lf\n", waypoints[0].latitude );
-				printf( "Lat %s", buffer );
+				snprintf( buffer, MAX_BUFFER_SIZE, "%lf %lf\n", currGpsFix.latitude, currGpsFix.longitude );
 				int size = send( connectionSocket, buffer, strlen( buffer ), 0 );
-				if( size == -1 )
-				{
-					printf( "send() failure, errno = %d\n", errno );
-					close( connectionSocket );
-					exit( EXIT_FAILURE );
-				}
-				else if( size == 0 )
-				{
-					printf( "Android client disconnected\n" );
-					// Client disconnected.
-					break;
-				}
-
-				snprintf( buffer, MAX_BUFFER_SIZE, "%lf\n", waypoints[0].longitude );
-				printf( "Lon %s", buffer );
-				size = send( connectionSocket, buffer, strlen( buffer ), 0 );
 				if( size == -1 )
 				{
 					printf( "send() failure, errno = %d\n", errno );
