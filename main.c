@@ -295,7 +295,6 @@ void *sendAndroidGpsUpdates( void *arg )
 			continue;
 		}
 
-		printf( "Got connection for GPS updates.\n" );
 		pid_t pid = fork();
 		if( pid < 0 )
 		{
@@ -321,7 +320,7 @@ void *sendAndroidGpsUpdates( void *arg )
 				}
 				else if( size == 0 )
 				{
-					printf( "Android client disconnected\n" );
+					printf( "Android client unsubscribed from GPS updates.\n" );
 					// Client disconnected.
 					break;
 				}
