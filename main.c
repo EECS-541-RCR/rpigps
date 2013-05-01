@@ -23,7 +23,7 @@
 #define MAX_NUM_WAYPOINTS 20
 #define MAX_NMEA_SENTENCE_LEN 1024
 #define ENABLE_GPS 0
-#define ENABLE_NAVDATA 1
+#define ENABLE_NAVDATA 0
 
 #define MAX_YAW 180000
 #define MIN_YAW -180000
@@ -37,7 +37,7 @@ typedef enum { false, true } bool;
 
 // By default, wait for commands from Android device.
 bool				autonomousMode = false;
-bool				programmedMode = true;
+bool				programmedMode = false;
 
 double  netYaw = 0;
 navdata_t navdata_struct;
@@ -96,8 +96,8 @@ int main( int argc, char **argv )
 
 #if ENABLE_GPS
 	pthread_create( &gpsPollThread, &attr, gpsPoll, (void *)NULL );
-	pthread_create( &androidGpsUpdateThread, &attr, sendAndroidGpsUpdates, (void *)NULL );
 #endif
+	pthread_create( &androidGpsUpdateThread, &attr, sendAndroidGpsUpdates, (void *)NULL );
 #if ENABLE_NAVDATA
 	pthread_create( &droneNavDataThread, &attr, getNavData, (void *)NULL );
 #endif
@@ -107,8 +107,8 @@ int main( int argc, char **argv )
 	void *status;
 #if ENABLE_GPS
 	pthread_join( gpsPollThread, &status );
-	pthread_join( androidGpsUpdateThread, &status );
 #endif
+	pthread_join( androidGpsUpdateThread, &status );
 #if ENABLE_NAVDATA
 	pthread_join( droneNavDataThread, &status );
 #endif
@@ -292,6 +292,7 @@ void *sendAndroidGpsUpdates( void *arg )
 			continue;
 		}
 
+		printf( "Got connection for GPS updates." );
 		pid_t pid = fork();
 		if( pid < 0 )
 		{
@@ -307,13 +308,28 @@ void *sendAndroidGpsUpdates( void *arg )
 				sleep( 1 );
 
 				char buffer[MAX_BUFFER_SIZE];
-				currGpsFix.latitude = -1489.15;
-				currGpsFix.longitude = 3258.236512369;
-				snprintf( buffer, MAX_BUFFER_SIZE, "%lf %lf", currGpsFix.latitude, currGpsFix.longitude );
-				int size = send( connectionSocket, buffer, MAX_BUFFER_SIZE, 0 );
+				snprintf( buffer, MAX_BUFFER_SIZE, "%lf\n", waypoints[0].latitude );
+				printf( "Lat %s", buffer );
+				int size = send( connectionSocket, buffer, strlen( buffer ), 0 );
 				if( size == -1 )
 				{
-					printf( "recv() failure, errno = %d\n", errno );
+					printf( "send() failure, errno = %d\n", errno );
+					close( connectionSocket );
+					exit( EXIT_FAILURE );
+				}
+				else if( size == 0 )
+				{
+					printf( "Android client disconnected\n" );
+					// Client disconnected.
+					break;
+				}
+
+				snprintf( buffer, MAX_BUFFER_SIZE, "%lf\n", waypoints[0].longitude );
+				printf( "Lon %s", buffer );
+				size = send( connectionSocket, buffer, strlen( buffer ), 0 );
+				if( size == -1 )
+				{
+					printf( "send() failure, errno = %d\n", errno );
 					close( connectionSocket );
 					exit( EXIT_FAILURE );
 				}
